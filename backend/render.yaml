@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: telegram-tiktok-backend
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: TG_API_ID
+        sync: false
+      - key: TG_API_HASH
+        sync: false
+      - key: TG_SESSION
+        sync: false
+      - key: TG_CHANNEL_ID
+        sync: false
+      - key: FIREBASE_JSON_B64
+        sync: false
+      - key: PYTHONUNBUFFERED
+        value: "1"
