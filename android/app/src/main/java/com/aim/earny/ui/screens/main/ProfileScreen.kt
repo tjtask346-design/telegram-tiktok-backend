@@ -2,7 +2,6 @@
 
 package com.aim.earny.ui.screens.main
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -58,8 +57,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -67,11 +64,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.aim.earny.R
 import com.aim.earny.data.UserProfile
 import com.aim.earny.data.Video
 import com.aim.earny.data.formatCount
 import com.aim.earny.ui.components.EarnyButton
+import com.aim.earny.ui.components.SafeAvatar
 import com.aim.earny.ui.theme.EarnyBlack
 import com.aim.earny.ui.theme.EarnyBorder
 import com.aim.earny.ui.theme.EarnyInput
@@ -236,22 +233,12 @@ private fun ProfileHeader(
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
             Box(contentAlignment = Alignment.BottomEnd) {
-                Box(
-                    Modifier.size(100.dp)
-                        .background(Brush.sweepGradient(listOf(Gold, Orange, Gold)), CircleShape)
-                        .padding(3.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Image(
-                        painter = painterResource(R.drawable.earny_logo),
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clip(CircleShape)
-                            .background(EarnyInput)
-                    )
-                }
+                SafeAvatar(
+                    name = profile.username.ifBlank {
+                        profile.fullName.ifBlank { profile.email }
+                    },
+                    size = 100.dp
+                )
                 Box(
                     Modifier.size(26.dp)
                         .background(Gold, CircleShape)
