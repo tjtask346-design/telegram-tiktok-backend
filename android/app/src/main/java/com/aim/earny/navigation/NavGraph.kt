@@ -7,101 +7,71 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import com.aim.earny.BuildConfig
-import com.aim.earny.ui.screens.auth.*
+import com.aim.earny.ui.screens.auth.SignupScreen
+import com.aim.earny.ui.screens.auth.VerifyEmailScreen
 import com.aim.earny.ui.screens.main.MainScaffold
 import com.aim.earny.ui.screens.onboard.OnboardingScreen
 import com.aim.earny.ui.screens.onboard.SplashScreen
-import com.aim.earny.vm.AuthViewModel
 
 @Composable
 fun EarnyNavGraph(
-    startSignedIn: Boolean,
-    onSignOutRequest: () -> Unit
+    startRoute: String,
+    onSignedOut: () -> Unit
 ) {
     val nav = rememberNavController()
-    val authVm: AuthViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
 
-    val start = remember {
-        when {
-            startSignedIn -> Routes.MAIN
-            else -> Routes.SPLASH
-        }
-    }
-
-    NavHost(navController = nav, startDestination = start) {
+    NavHost(navController = nav, startDestination = startRoute) {
 
         composable(Routes.SPLASH) {
             SplashScreen(onDone = {
-                nav.navigate(Routes.ONBOARD) { popUpTo(Routes.SPLASH) { inclusive = true } }
+                nav.navigate(Routes.ONBOARD) {
+                    popUpTo(Routes.SPLASH) { inclusive = true }
+                }
             })
         }
 
         composable(Routes.ONBOARD) {
             OnboardingScreen(onDone = {
-                nav.navigate(Routes.AUTH_CHOICE) { popUpTo(Routes.ONBOARD) { inclusive = true } }
+                nav.navigate(Routes.SIGNUP) {
+                    popUpTo(Routes.ONBOARD) { inclusive = true }
+                }
             })
         }
 
-        composable(Routes.AUTH_CHOICE) {
-            AuthChoiceScreen(onContinue = { nav.navigate(Routes.EMAIL) })
-        }
-
-        composable(Routes.EMAIL) {
-            EmailInputScreen(
-                onBack = { nav.popBackStack() },
-                onMagicLink = { email ->
-                    authVm.sendMagicLink(email, BuildConfig.MAGIC_LINK) {
-                        nav.navigate(Routes.magicSent(email))
+        composable(Routes.SIGNUP) {
+            SignupScreen(
+                onSignupSuccess = {
+                    val email = com.google.firebase.auth.FirebaseAuth
+                        .getInstance().currentUser?.email ?: ""
+                    nav.navigate(Routes.verify(email)) {
+                        popUpTo(Routes.SIGNUP) { inclusive = true }
                     }
-                },
-                onPassword = { email -> nav.navigate(Routes.password(email)) }
+                }
             )
         }
 
         composable(
-            Routes.MAGIC_SENT,
+            Routes.VERIFY,
             arguments = listOf(navArgument("email") { type = NavType.StringType })
         ) { entry ->
-            val email = entry.arguments?.getString("email") ?: ""
-            MagicLinkSentScreen(
+            val raw = entry.arguments?.getString("email") ?: ""
+            val email = java.net.URLDecoder.decode(raw, "UTF-8")
+            VerifyEmailScreen(
                 email = email,
-                onResend = { authVm.sendMagicLink(email, BuildConfig.MAGIC_LINK) {} },
-                onUsePassword = { nav.navigate(Routes.password(email)) }
-            )
-        }
-
-        composable(
-            Routes.PASSWORD,
-            arguments = listOf(navArgument("email") { type = NavType.StringType })
-        ) { entry ->
-            val email = entry.arguments?.getString("email") ?: ""
-            PasswordScreen(
-                email = email,
-                onBack = { nav.popBackStack() },
-                onSuccess = {
-                    nav.navigate(Routes.PROFILE_SETUP) {
+                onVerified = {
+                    nav.navigate(Routes.MAIN) {
                         popUpTo(0) { inclusive = true }
                     }
-                },
-                vm = authVm
-            )
-        }
-
-        composable(Routes.PROFILE_SETUP) {
-            ProfileSetupScreen(
-                onDone = {
-                    nav.navigate(Routes.MAIN) { popUpTo(0) { inclusive = true } }
-                },
-                vm = authVm
+                }
             )
         }
 
         composable(Routes.MAIN) {
             MainScaffold(onSignOut = {
-                authVm.signOut()
-                onSignOutRequest()
-                nav.navigate(Routes.AUTH_CHOICE) { popUpTo(0) { inclusive = true } }
+                onSignedOut()
+                nav.navigate(Routes.SIGNUP) {
+                    popUpTo(0) { inclusive = true }
+                }
             })
         }
     }
