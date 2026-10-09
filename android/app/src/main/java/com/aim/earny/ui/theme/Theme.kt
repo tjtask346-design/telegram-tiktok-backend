@@ -1,21 +1,34 @@
 package com.aim.earny.ui.theme
 
+import android.app.Activity
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.graphics.Color
+import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
 
-private val DarkColors = darkColorScheme(
-    primary = Color(0xFF00E5A0),
-    secondary = Color(0xFF00B8D4),
-    background = Color(0xFF0A0E14),
-    surface = Color(0xFF111820),
-    onPrimary = Color(0xFF001A11),
-    onBackground = Color(0xFFFFFFFF),
-    onSurface = Color(0xFFFFFFFF),
+private val EarnyColors = darkColorScheme(
+    primary = Gold,
+    secondary = Orange,
+    background = EarnyBlack,
+    surface = EarnySurface,
+    onPrimary = EarnyBlack,
+    onBackground = TextWhite,
+    onSurface = TextWhite
 )
 
 @Composable
 fun EarnyTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = DarkColors, content = content)
+    val view = LocalView.current
+    if (!view.isInEditMode) {
+        SideEffect {
+            val window = (view.context as Activity).window
+            window.statusBarColor = EarnyBlack.toArgb()
+            window.navigationBarColor = EarnyBlack.toArgb()
+            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = false
+        }
+    }
+    MaterialTheme(colorScheme = EarnyColors, typography = EarnyTypography, content = content)
 }
