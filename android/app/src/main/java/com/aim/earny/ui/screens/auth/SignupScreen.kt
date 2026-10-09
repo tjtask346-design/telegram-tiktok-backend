@@ -8,10 +8,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -31,6 +33,7 @@ import com.aim.earny.ui.components.EarnyOrb
 import com.aim.earny.ui.components.EarnyTextField
 import com.aim.earny.ui.theme.*
 import com.aim.earny.vm.AuthViewModel
+import com.aim.earny.vm.UsernameState
 
 @Composable
 fun SignupScreen(
@@ -40,47 +43,47 @@ fun SignupScreen(
 ) {
     var firstName by remember { mutableStateOf("") }
     var lastName by remember { mutableStateOf("") }
+    var username by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var showPw by remember { mutableStateOf(false) }
 
     val loading by vm.loading.collectAsState()
     val error by vm.error.collectAsState()
+    val unameState by vm.usernameState.collectAsState()
 
     val emailValid = android.util.Patterns.EMAIL_ADDRESS
         .matcher(email.trim()).matches()
+
     val canSubmit = firstName.isNotBlank()
         && lastName.isNotBlank()
         && emailValid
         && password.length >= 6
+        && unameState == UsernameState.Available
         && !loading
 
     Column(
         Modifier.fillMaxSize().background(EarnyBlack)
-            .verticalScroll(rememberScrollState())
-            .padding(28.dp),
+            .verticalScroll(rememberScrollState()).padding(28.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Spacer(Modifier.height(48.dp))
+        Spacer(Modifier.height(32.dp))
 
-        EarnyOrb(size = 72.dp)
+        EarnyOrb(size = 68.dp)
 
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(20.dp))
 
+        Text("Create your account", color = TextWhite, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(6.dp))
         Text(
-            "Create your account",
-            color = TextWhite, fontSize = 28.sp, fontWeight = FontWeight.Bold
-        )
-        Spacer(Modifier.height(8.dp))
-        Text(
-            "Start earning in seconds —\njust your email",
-            color = TextWhite60, fontSize = 14.sp,
-            textAlign = TextAlign.Center, lineHeight = 20.sp
+            "Claim your @username — it's your identity",
+            color = TextWhite60, fontSize = 13.sp,
+            textAlign = TextAlign.Center
         )
 
-        Spacer(Modifier.height(36.dp))
+        Spacer(Modifier.height(28.dp))
 
-        // First + Last name
+        // Name row
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Box(Modifier.weight(1f)) {
                 EarnyTextField(
@@ -99,6 +102,56 @@ fun SignupScreen(
         }
 
         Spacer(Modifier.height(12.dp))
+
+        // Username with live check
+        EarnyTextField(
+            value = username,
+            onValueChange = {
+                val v = it.lowercase().filter { ch ->
+                    ch.isLetterOrDigit() || ch == '_' || ch == '.'
+                }
+                if (v.length <= 20) {
+                    username = v
+                    vm.checkUsername(v)
+                    vm.clearError()
+                }
+            },
+            placeholder = "@username",
+            isError = unameState == UsernameState.Taken || unameState == UsernameState.Invalid,
+            trailingIcon = {
+                when (unameState) {
+                    UsernameState.Checking -> CircularProgressIndicator(
+                        color = Gold,
+                        strokeWidth = 2.dp,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    UsernameState.Available -> Icon(
+                        Icons.Filled.Check, null,
+                        tint = Color(0xFF4CAF50),
+                        modifier = Modifier.size(22.dp)
+                    )
+                    else -> {}
+                }
+            }
+        )
+
+        // Username status line
+        Spacer(Modifier.height(6.dp))
+        Row(
+            Modifier.fillMaxWidth().padding(start = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            val (txt, col) = when (unameState) {
+                UsernameState.Idle -> "3+ chars, a-z 0-9 _ ." to TextWhite40
+                UsernameState.Checking -> "Checking availability…" to TextWhite60
+                UsernameState.Available -> "✓ @$username is available" to Color(0xFF4CAF50)
+                UsernameState.Taken -> "✗ @$username is already taken" to Color(0xFFE53935)
+                UsernameState.Invalid -> "Only 3-20 chars: a-z 0-9 _ ." to Color(0xFFE53935)
+            }
+            Text(txt, color = col, fontSize = 11.sp)
+        }
+
+        Spacer(Modifier.height(14.dp))
 
         EarnyTextField(
             value = email,
@@ -130,22 +183,12 @@ fun SignupScreen(
             }
         )
 
-        Spacer(Modifier.height(8.dp))
-        Text(
-            "Must be 6+ characters",
-            color = TextWhite40, fontSize = 11.sp,
-            modifier = Modifier.align(Alignment.Start).padding(start = 4.dp)
-        )
-
         if (error != null) {
             Spacer(Modifier.height(16.dp))
-            Text(
-                error!!, color = Color(0xFFE53935), fontSize = 13.sp,
-                textAlign = TextAlign.Center
-            )
+            Text(error!!, color = Color(0xFFE53935), fontSize = 13.sp, textAlign = TextAlign.Center)
         }
 
-        Spacer(Modifier.height(28.dp))
+        Spacer(Modifier.height(24.dp))
 
         EarnyButton(
             text = "Create Account",
@@ -153,19 +196,18 @@ fun SignupScreen(
             loading = loading,
             gradient = true,
             onClick = {
-                vm.signUp(firstName, lastName, email, password, onSignupSuccess)
+                vm.signUp(firstName, lastName, username, email, password, onSignupSuccess)
             }
         )
 
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(16.dp))
 
         Text(
-            "We'll send a verification link to\nyour email to activate your account",
-            color = TextWhite40, fontSize = 12.sp,
-            textAlign = TextAlign.Center, lineHeight = 18.sp
+            "We'll send a verification link to your email",
+            color = TextWhite40, fontSize = 12.sp, textAlign = TextAlign.Center
         )
 
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(20.dp))
 
         Row(
             Modifier.fillMaxWidth(),

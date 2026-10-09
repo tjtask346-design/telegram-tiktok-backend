@@ -231,7 +231,10 @@ private fun VideoPage(video: Video) {
             Modifier.align(Alignment.BottomStart)
                 .padding(start = 16.dp, bottom = 90.dp, end = 80.dp)
         ) {
-            Text("@" + video.uploader, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            val displayName = if (video.uploaderHandle.isNotBlank()) "@" + video.uploaderHandle
+            else if (video.uploaderName.isNotBlank()) video.uploaderName
+            else "earny_user"
+            Text(displayName, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
             if (video.caption.isNotBlank()) {
                 Spacer(Modifier.height(6.dp))
                 Text(video.caption, color = Color.White, fontSize = 14.sp)

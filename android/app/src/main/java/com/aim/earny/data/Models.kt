@@ -3,7 +3,8 @@ package com.aim.earny.data
 data class Video(
     val id: String = "",
     val uploader: String = "",
-    val uploaderUid: String = "",
+    val uploaderName: String = "",
+    val uploaderHandle: String = "",
     val caption: String = "",
     val telegramMsgId: Long = 0,
     val likes: Long = 0,

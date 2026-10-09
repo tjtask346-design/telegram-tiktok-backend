@@ -91,9 +91,23 @@ async def upload(
         except Exception:
             pass
 
+    # Lookup uploader's profile for display name
+    uploader_name = "user"
+    uploader_handle = ""
+    try:
+        u_doc = db.collection("users").document(uid).get()
+        if u_doc.exists:
+            d = u_doc.to_dict() or {}
+            uploader_handle = d.get("username", "") or ""
+            uploader_name = d.get("fullName", "") or d.get("firstName", "user")
+    except Exception as e:
+        log.warning(f"profile lookup failed: {e}")
+
     doc = db.collection("videos").document()
     doc.set({
         "uploader": uid,
+        "uploaderName": uploader_name,
+        "uploaderHandle": uploader_handle,
         "caption": caption,
         "telegramMsgId": msg_id,
         "sizeBytes": total,

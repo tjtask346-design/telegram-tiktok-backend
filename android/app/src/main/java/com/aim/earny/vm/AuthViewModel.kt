@@ -3,9 +3,13 @@ package com.aim.earny.vm
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.aim.earny.data.AuthRepository
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+
+enum class UsernameState { Idle, Checking, Available, Taken, Invalid }
 
 class AuthViewModel(
     private val repo: AuthRepository = AuthRepository()
@@ -20,13 +24,43 @@ class AuthViewModel(
     private val _info = MutableStateFlow<String?>(null)
     val info = _info.asStateFlow()
 
+    private val _usernameState = MutableStateFlow(UsernameState.Idle)
+    val usernameState = _usernameState.asStateFlow()
+
+    private var checkJob: Job? = null
+
     fun clearError() { _error.value = null; _info.value = null }
 
-    fun signUp(first: String, last: String, email: String, password: String, onSuccess: () -> Unit) {
+    /** Debounced username availability check */
+    fun checkUsername(username: String) {
+        checkJob?.cancel()
+        val clean = username.trim().lowercase()
+
+        when {
+            clean.isEmpty() -> { _usernameState.value = UsernameState.Idle; return }
+            clean.length < 3 -> { _usernameState.value = UsernameState.Invalid; return }
+            !clean.matches(Regex("^[a-z0-9_.]+$")) -> {
+                _usernameState.value = UsernameState.Invalid; return
+            }
+        }
+
+        _usernameState.value = UsernameState.Checking
+        checkJob = viewModelScope.launch {
+            delay(450) // debounce
+            val ok = runCatching { repo.isUsernameAvailable(clean) }.getOrDefault(false)
+            _usernameState.value = if (ok) UsernameState.Available else UsernameState.Taken
+        }
+    }
+
+    fun signUp(
+        first: String, last: String, username: String,
+        email: String, password: String,
+        onSuccess: () -> Unit
+    ) {
         viewModelScope.launch {
             _loading.value = true; _error.value = null
             try {
-                repo.signUpWithDetails(first, last, email, password)
+                repo.signUpWithDetails(first, last, username, email, password)
                 onSuccess()
             } catch (e: Exception) {
                 _error.value = repo.friendlyError(e)

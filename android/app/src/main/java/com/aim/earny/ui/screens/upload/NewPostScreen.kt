@@ -290,13 +290,13 @@ fun NewPostScreen(
                         }
                         Spacer(Modifier.height(28.dp))
                         Text(
-                            "Posting your video…",
+                            "Publishing your video…",
                             color = Color.White, fontSize = 17.sp,
                             fontWeight = FontWeight.SemiBold
                         )
                         Spacer(Modifier.height(6.dp))
                         Text(
-                            "Sending to Telegram • please wait",
+                            "Uploading your video securely",
                             color = TextWhite60, fontSize = 13.sp
                         )
                     }
