@@ -17,26 +17,44 @@ class AuthViewModel(
     private val _error = MutableStateFlow<String?>(null)
     val error = _error.asStateFlow()
 
-    fun clearError() { _error.value = null }
+    private val _info = MutableStateFlow<String?>(null)
+    val info = _info.asStateFlow()
 
-    fun signUp(
-        firstName: String,
-        lastName: String,
-        email: String,
-        password: String,
-        onSuccess: () -> Unit
-    ) {
+    fun clearError() { _error.value = null; _info.value = null }
+
+    fun signUp(first: String, last: String, email: String, password: String, onSuccess: () -> Unit) {
         viewModelScope.launch {
-            _loading.value = true
-            _error.value = null
+            _loading.value = true; _error.value = null
             try {
-                repo.signUpWithDetails(firstName, lastName, email, password)
+                repo.signUpWithDetails(first, last, email, password)
                 onSuccess()
             } catch (e: Exception) {
                 _error.value = repo.friendlyError(e)
-            } finally {
-                _loading.value = false
-            }
+            } finally { _loading.value = false }
+        }
+    }
+
+    fun signIn(email: String, password: String, onSuccess: () -> Unit) {
+        viewModelScope.launch {
+            _loading.value = true; _error.value = null
+            try {
+                repo.signIn(email, password)
+                onSuccess()
+            } catch (e: Exception) {
+                _error.value = repo.friendlyError(e)
+            } finally { _loading.value = false }
+        }
+    }
+
+    fun resetPassword(email: String) {
+        viewModelScope.launch {
+            _loading.value = true; _error.value = null
+            try {
+                repo.resetPassword(email)
+                _info.value = "Password reset email sent"
+            } catch (e: Exception) {
+                _error.value = repo.friendlyError(e)
+            } finally { _loading.value = false }
         }
     }
 
@@ -44,9 +62,7 @@ class AuthViewModel(
         runCatching { repo.checkVerified() }.getOrDefault(false)
 
     fun resend() {
-        viewModelScope.launch {
-            runCatching { repo.resendVerification() }
-        }
+        viewModelScope.launch { runCatching { repo.resendVerification() } }
     }
 
     fun signOut() = repo.signOut()

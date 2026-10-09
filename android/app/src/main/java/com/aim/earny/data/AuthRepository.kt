@@ -13,10 +13,8 @@ class AuthRepository(
     val currentUser get() = auth.currentUser
 
     suspend fun signUpWithDetails(
-        firstName: String,
-        lastName: String,
-        email: String,
-        password: String
+        firstName: String, lastName: String,
+        email: String, password: String
     ) {
         if (firstName.isBlank()) throw IllegalArgumentException("First name required")
         if (lastName.isBlank()) throw IllegalArgumentException("Last name required")
@@ -40,6 +38,8 @@ class AuthRepository(
                     "lastName" to lastName.trim(),
                     "fullName" to fullName,
                     "email" to email.trim(),
+                    "bio" to "",
+                    "followers" to 0,
                     "emailVerified" to false,
                     "createdAt" to FieldValue.serverTimestamp()
                 )
@@ -47,6 +47,14 @@ class AuthRepository(
         }
 
         user.sendEmailVerification().await()
+    }
+
+    suspend fun signIn(email: String, password: String) {
+        auth.signInWithEmailAndPassword(email.trim(), password).await()
+    }
+
+    suspend fun resetPassword(email: String) {
+        auth.sendPasswordResetEmail(email.trim()).await()
     }
 
     suspend fun checkVerified(): Boolean {
@@ -73,6 +81,8 @@ class AuthRepository(
         val m = e.message ?: return "Something went wrong"
         return when {
             m.contains("already in use", true) -> "This email is already registered"
+            m.contains("password is invalid", true) -> "Wrong password"
+            m.contains("no user record", true) -> "No account with this email"
             m.contains("badly formatted", true) -> "Invalid email format"
             m.contains("network", true) -> "Network error — check internet"
             m.contains("too many requests", true) -> "Too many attempts. Wait a minute."

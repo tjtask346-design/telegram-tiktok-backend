@@ -17,12 +17,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.compose.*
 import com.aim.earny.ui.components.EarnyOrb
+import com.aim.earny.ui.components.UploadSheet
 import com.aim.earny.ui.theme.*
 
 @Composable
 fun MainScaffold(onSignOut: () -> Unit) {
     val nav = rememberNavController()
     val current = nav.currentBackStackEntryAsState().value?.destination?.route
+    var showUpload by remember { mutableStateOf(false) }
 
     Box(Modifier.fillMaxSize().background(EarnyBlack)) {
         NavHost(
@@ -31,7 +33,6 @@ fun MainScaffold(onSignOut: () -> Unit) {
         ) {
             composable("feed") { FeedScreen(onSignOut = onSignOut) }
             composable("discover") { DiscoverScreen() }
-            composable("create") { CreateScreen() }
             composable("inbox") { InboxScreen() }
             composable("profile") { ProfileScreen(onSignOut = onSignOut) }
         }
@@ -52,9 +53,7 @@ fun MainScaffold(onSignOut: () -> Unit) {
                     nav.navigate("discover") { launchSingleTop = true; popUpTo("feed") }
                 }
                 Box(Modifier.weight(1.2f), contentAlignment = Alignment.Center) {
-                    EarnyOrb(size = 52.dp) {
-                        nav.navigate("create") { launchSingleTop = true; popUpTo("feed") }
-                    }
+                    EarnyOrb(size = 52.dp) { showUpload = true }
                 }
                 NavItem(Icons.Filled.Email, "Inbox", current == "inbox", Modifier.weight(1f), badge = true) {
                     nav.navigate("inbox") { launchSingleTop = true; popUpTo("feed") }
@@ -64,6 +63,13 @@ fun MainScaffold(onSignOut: () -> Unit) {
                 }
             }
         }
+    }
+
+    if (showUpload) {
+        UploadSheet(
+            onDismiss = { showUpload = false },
+            onUploadStart = { showUpload = false }
+        )
     }
 }
 
@@ -86,7 +92,8 @@ private fun NavItem(
                 )
                 if (badge) {
                     Box(
-                        Modifier.size(8.dp).background(HeartRed, androidx.compose.foundation.shape.CircleShape)
+                        Modifier.size(8.dp)
+                            .background(HeartRed, androidx.compose.foundation.shape.CircleShape)
                             .align(Alignment.TopEnd)
                     )
                 }
