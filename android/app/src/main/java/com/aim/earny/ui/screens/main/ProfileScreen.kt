@@ -27,6 +27,7 @@ import com.aim.earny.R
 import com.aim.earny.ui.theme.*
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.tasks.await
 
 @Composable
 fun ProfileScreen(onSignOut: () -> Unit) {
