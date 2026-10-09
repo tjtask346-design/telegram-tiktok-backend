@@ -36,9 +36,7 @@ fun DiscoverScreen() {
     LaunchedEffect(Unit) {
         runCatching {
             val snap = db.collection("users").limit(60).get().await()
-            users = snap.documents.mapNotNull { d ->
-                d.toObject(UserProfile::class.java)?.copy(uid = d.id)
-            }
+            users = snap.documents.map { com.aim.earny.data.DocumentMapper.user(it) }
         }
         loading = false
     }

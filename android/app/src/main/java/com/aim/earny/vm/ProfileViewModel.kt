@@ -2,9 +2,11 @@ package com.aim.earny.vm
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.aim.earny.data.DocumentMapper
 import com.aim.earny.data.UserProfile
 import com.aim.earny.data.Video
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -46,37 +48,39 @@ class ProfileViewModel : ViewModel() {
     private var currentTargetUid: String? = null
 
     fun load(targetUid: String? = null) {
-        val uid = targetUid ?: auth.currentUser?.uid ?: return
+        val me = auth.currentUser?.uid
+        val uid = targetUid ?: me ?: run {
+            _loading.value = false
+            return
+        }
         currentTargetUid = uid
-        _isOwnProfile.value = uid == auth.currentUser?.uid
+        _isOwnProfile.value = uid == me
 
         viewModelScope.launch {
             _loading.value = true
 
-            // Profile
+            // Profile — safe mapping, never throws
             runCatching {
                 val doc = db.collection("users").document(uid).get().await()
-                val p = doc.toObject(UserProfile::class.java)?.copy(uid = uid)
-                _profile.value = p
+                _profile.value = DocumentMapper.user(doc, uid)
             }
 
-            // Public videos
+            // Videos — safe mapping
             runCatching {
                 val snap = db.collection("videos")
                     .whereEqualTo("uploader", uid)
                     .orderBy("createdAt", Query.Direction.DESCENDING)
-                    .limit(60).get().await()
-                val all = snap.documents.mapNotNull { d ->
-                    d.toObject(Video::class.java)?.copy(id = d.id)
-                }
+                    .limit(60)
+                    .get()
+                    .await()
+
+                val all = snap.documents.map { DocumentMapper.video(it) }
                 _videos.value = all.filter { !it.isPrivate && !it.isDraft && !it.isRepost }
                 _privateVideos.value = all.filter { it.isPrivate || it.isDraft }
                 _reposts.value = all.filter { it.isRepost }
             }
 
-            // Liked videos (placeholder — needs separate collection)
             _liked.value = emptyList()
-
             _loading.value = false
         }
     }
@@ -121,15 +125,11 @@ class ProfileViewModel : ViewModel() {
             runCatching {
                 db.collection("users").document(target).update(
                     "followers",
-                    com.google.firebase.firestore.FieldValue.increment(
-                        if (nowFollowing) 1 else -1
-                    )
+                    FieldValue.increment(if (nowFollowing) 1 else -1)
                 ).await()
                 db.collection("users").document(me).update(
                     "following",
-                    com.google.firebase.firestore.FieldValue.increment(
-                        if (nowFollowing) 1 else -1
-                    )
+                    FieldValue.increment(if (nowFollowing) 1 else -1)
                 ).await()
             }.onFailure { _isFollowing.value = !nowFollowing }
         }

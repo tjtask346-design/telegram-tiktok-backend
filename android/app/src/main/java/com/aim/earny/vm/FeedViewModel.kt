@@ -2,6 +2,7 @@ package com.aim.earny.vm
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.aim.earny.data.DocumentMapper
 import com.aim.earny.data.Video
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
@@ -35,11 +36,9 @@ class FeedViewModel : ViewModel() {
                     .limit(50)
                     .get()
                     .await()
-                _videos.value = snap.documents.mapNotNull { d ->
-                    d.toObject(Video::class.java)?.copy(id = d.id)
-                }
+                _videos.value = snap.documents.map { DocumentMapper.video(it) }
             } catch (e: Exception) {
-                _error.value = e.message ?: "Failed to load"
+                _error.value = e.message ?: "Failed to load feed"
             } finally {
                 _loading.value = false
             }

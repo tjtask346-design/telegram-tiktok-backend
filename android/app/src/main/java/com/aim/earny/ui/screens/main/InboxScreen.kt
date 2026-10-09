@@ -41,9 +41,7 @@ fun InboxScreen() {
                     .whereEqualTo("receiver", uid)
                     .orderBy("timestamp", Query.Direction.DESCENDING)
                     .limit(50).get().await()
-                messages = snap.documents.mapNotNull { d ->
-                    d.toObject(InboxMessage::class.java)?.copy(id = d.id)
-                }
+                messages = snap.documents.map { com.aim.earny.data.DocumentMapper.message(it) }
             }
         }
         loading = false
