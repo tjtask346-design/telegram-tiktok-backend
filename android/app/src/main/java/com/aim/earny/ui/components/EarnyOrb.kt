@@ -8,14 +8,17 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -101,23 +104,20 @@ fun EarnyOrb(
             )
 
             drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(EarnyInput, EarnyInput),
-                    center = center,
-                    radius = radius - 5.dp.toPx()
-                ),
+                color = EarnyInput,
                 radius = radius - 5.dp.toPx(),
                 center = center
             )
         }
 
-        // Real icon from launcher — instead of "e"
+        // Load PNG (not adaptive icon)
         Image(
-            painter = painterResource(R.mipmap.ic_launcher),
+            painter = painterResource(R.drawable.earny_logo),
             contentDescription = null,
+            contentScale = ContentScale.Crop,
             modifier = Modifier
-                .size(size * 0.62f)
-                .padding(2.dp)
+                .size(size * 0.72f)
+                .clip(CircleShape)
         )
     }
 }

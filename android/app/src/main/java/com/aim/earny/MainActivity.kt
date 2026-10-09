@@ -10,7 +10,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import com.aim.earny.navigation.EarnyNavGraph
 import com.aim.earny.navigation.Routes
 import com.aim.earny.ui.theme.EarnyBlack
@@ -31,19 +30,27 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun RootApp() {
     val auth = remember { FirebaseAuth.getInstance() }
-    var startRoute by remember { mutableStateOf<String?>(null) }
+    var ready by remember { mutableStateOf(false) }
+    var startRoute by remember { mutableStateOf(Routes.SPLASH) }
 
     LaunchedEffect(Unit) {
-        delay(200)
-        val u = auth.currentUser
-        startRoute = when {
-            u == null -> Routes.SPLASH
-            !u.isEmailVerified -> Routes.verify(u.email ?: "")
-            else -> Routes.MAIN
+        delay(150)
+        // CRITICAL: only use simple routes that match their pattern
+        // to avoid NavHost crash from resolved-route mismatch.
+        startRoute = try {
+            val u = auth.currentUser
+            when {
+                u == null -> Routes.SPLASH
+                !u.isEmailVerified -> Routes.SPLASH  // will navigate to verify from splash
+                else -> Routes.MAIN
+            }
+        } catch (t: Throwable) {
+            Routes.SPLASH
         }
+        ready = true
     }
 
-    if (startRoute == null) {
+    if (!ready) {
         Box(
             Modifier.fillMaxSize().background(EarnyBlack),
             contentAlignment = Alignment.Center
@@ -52,7 +59,7 @@ fun RootApp() {
         }
     } else {
         EarnyNavGraph(
-            startRoute = startRoute!!,
+            startRoute = startRoute,
             onSignedOut = { }
         )
     }

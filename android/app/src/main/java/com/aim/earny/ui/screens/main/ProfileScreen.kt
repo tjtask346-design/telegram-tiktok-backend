@@ -1,5 +1,6 @@
 package com.aim.earny.ui.screens.main
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -59,8 +60,8 @@ fun ProfileScreen(onSignOut: () -> Unit) {
                 Modifier.size(72.dp).clip(CircleShape).background(Gold),
                 contentAlignment = Alignment.Center
             ) {
-                androidx.compose.foundation.Image(
-                    painter = painterResource(R.mipmap.ic_launcher),
+                Image(
+                    painter = painterResource(R.drawable.earny_logo),
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.size(72.dp).clip(CircleShape)

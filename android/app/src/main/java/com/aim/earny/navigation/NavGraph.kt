@@ -1,7 +1,6 @@
 package com.aim.earny.navigation
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -12,6 +11,7 @@ import com.aim.earny.ui.screens.auth.VerifyEmailScreen
 import com.aim.earny.ui.screens.main.MainScaffold
 import com.aim.earny.ui.screens.onboard.OnboardingScreen
 import com.aim.earny.ui.screens.onboard.SplashScreen
+import com.google.firebase.auth.FirebaseAuth
 
 @Composable
 fun EarnyNavGraph(
@@ -24,8 +24,23 @@ fun EarnyNavGraph(
 
         composable(Routes.SPLASH) {
             SplashScreen(onDone = {
-                nav.navigate(Routes.ONBOARD) {
-                    popUpTo(Routes.SPLASH) { inclusive = true }
+                val u = FirebaseAuth.getInstance().currentUser
+                when {
+                    u == null -> {
+                        nav.navigate(Routes.ONBOARD) {
+                            popUpTo(Routes.SPLASH) { inclusive = true }
+                        }
+                    }
+                    !u.isEmailVerified && !u.email.isNullOrBlank() -> {
+                        nav.navigate(Routes.verify(u.email!!)) {
+                            popUpTo(Routes.SPLASH) { inclusive = true }
+                        }
+                    }
+                    else -> {
+                        nav.navigate(Routes.MAIN) {
+                            popUpTo(Routes.SPLASH) { inclusive = true }
+                        }
+                    }
                 }
             })
         }
@@ -41,8 +56,7 @@ fun EarnyNavGraph(
         composable(Routes.SIGNUP) {
             SignupScreen(
                 onSignupSuccess = {
-                    val email = com.google.firebase.auth.FirebaseAuth
-                        .getInstance().currentUser?.email ?: ""
+                    val email = FirebaseAuth.getInstance().currentUser?.email ?: ""
                     nav.navigate(Routes.verify(email)) {
                         popUpTo(Routes.SIGNUP) { inclusive = true }
                     }
@@ -55,7 +69,10 @@ fun EarnyNavGraph(
             arguments = listOf(navArgument("email") { type = NavType.StringType })
         ) { entry ->
             val raw = entry.arguments?.getString("email") ?: ""
-            val email = java.net.URLDecoder.decode(raw, "UTF-8")
+            val email = try {
+                java.net.URLDecoder.decode(raw, "UTF-8")
+            } catch (t: Throwable) { raw }
+
             VerifyEmailScreen(
                 email = email,
                 onVerified = {
@@ -68,6 +85,7 @@ fun EarnyNavGraph(
 
         composable(Routes.MAIN) {
             MainScaffold(onSignOut = {
+                FirebaseAuth.getInstance().signOut()
                 onSignedOut()
                 nav.navigate(Routes.SIGNUP) {
                     popUpTo(0) { inclusive = true }
