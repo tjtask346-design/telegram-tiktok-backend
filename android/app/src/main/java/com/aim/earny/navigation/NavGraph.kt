@@ -27,9 +27,10 @@ fun EarnyNavGraph(startRoute: String, onSignedOut: () -> Unit) {
                     u == null -> nav.navigate(Routes.ONBOARD) {
                         popUpTo(Routes.SPLASH) { inclusive = true }
                     }
-                    !u.isEmailVerified && !u.email.isNullOrBlank() -> nav.navigate(Routes.verify(u.email!!)) {
-                        popUpTo(Routes.SPLASH) { inclusive = true }
-                    }
+                    !u.isEmailVerified && !u.email.isNullOrBlank() ->
+                        nav.navigate(Routes.verify(u.email!!)) {
+                            popUpTo(Routes.SPLASH) { inclusive = true }
+                        }
                     else -> nav.navigate(Routes.MAIN) {
                         popUpTo(Routes.SPLASH) { inclusive = true }
                     }
@@ -61,14 +62,15 @@ fun EarnyNavGraph(startRoute: String, onSignedOut: () -> Unit) {
             LoginScreen(
                 onLoginSuccess = {
                     val u = FirebaseAuth.getInstance().currentUser
-                    if (u?.isEmailVerified == true) {
-                        nav.navigate(Routes.MAIN) {
-                            popUpTo(0) { inclusive = true }
-                        }
-                    } else if (!u?.email.isNullOrBlank()) {
-                        nav.navigate(Routes.verify(u!!.email!!)) {
-                            popUpTo(0) { inclusive = true }
-                        }
+                    when {
+                        u?.isEmailVerified == true ->
+                            nav.navigate(Routes.MAIN) {
+                                popUpTo(Routes.LOGIN) { inclusive = true }
+                            }
+                        !u?.email.isNullOrBlank() ->
+                            nav.navigate(Routes.verify(u!!.email!!)) {
+                                popUpTo(Routes.LOGIN) { inclusive = true }
+                            }
                     }
                 },
                 onGoSignup = { nav.navigate(Routes.SIGNUP) }
@@ -84,16 +86,33 @@ fun EarnyNavGraph(startRoute: String, onSignedOut: () -> Unit) {
             VerifyEmailScreen(
                 email = email,
                 onVerified = {
-                    nav.navigate(Routes.MAIN) { popUpTo(0) { inclusive = true } }
+                    nav.navigate(Routes.MAIN) {
+                        popUpTo(Routes.VERIFY) { inclusive = true }
+                    }
                 }
             )
         }
 
         composable(Routes.MAIN) {
             MainScaffold(onSignOut = {
-                FirebaseAuth.getInstance().signOut()
-                onSignedOut()
-                nav.navigate(Routes.LOGIN) { popUpTo(0) { inclusive = true } }
+                // SAFE ORDER: navigate first, sign out after
+                // This avoids "no destination" crash when the back stack clears
+                val navOk = runCatching {
+                    nav.navigate(Routes.LOGIN) {
+                        popUpTo(Routes.MAIN) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                }.isSuccess
+
+                // If for some reason navigation failed, still sign out
+                // (the app will just sit on Main until user taps again)
+                if (navOk) {
+                    FirebaseAuth.getInstance().signOut()
+                    onSignedOut()
+                } else {
+                    FirebaseAuth.getInstance().signOut()
+                    onSignedOut()
+                }
             })
         }
     }
