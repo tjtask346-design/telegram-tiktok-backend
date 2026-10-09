@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "314717951853",
+    "firebase_url": "https://aim-s-earning5-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "aim-s-earning5",
+    "storage_bucket": "aim-s-earning5.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:314717951853:android:19aad071d39b63f2702c64",
+        "android_client_info": {
+          "package_name": "com.aim.earny"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBj-rv9O5mfNmwRyJrDR9PUIVWw_aJ8X58"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
