@@ -15,9 +15,42 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Logout
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.filled.QrCode
+import androidx.compose.material.icons.filled.Repeat
+import androidx.compose.material.icons.filled.Report
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Verified
+import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material3.BottomSheetDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -39,11 +72,22 @@ import com.aim.earny.data.UserProfile
 import com.aim.earny.data.Video
 import com.aim.earny.data.formatCount
 import com.aim.earny.ui.components.EarnyButton
-import com.aim.earny.ui.theme.*
+import com.aim.earny.ui.theme.EarnyBlack
+import com.aim.earny.ui.theme.EarnyBorder
+import com.aim.earny.ui.theme.EarnyInput
+import com.aim.earny.ui.theme.EarnySurface
+import com.aim.earny.ui.theme.Gold
+import com.aim.earny.ui.theme.GradBlueCyan
+import com.aim.earny.ui.theme.GradGoldOrange
+import com.aim.earny.ui.theme.GradGreenTeal
+import com.aim.earny.ui.theme.GradOrangeRed
+import com.aim.earny.ui.theme.GradPurplePink
+import com.aim.earny.ui.theme.Orange
+import com.aim.earny.ui.theme.TextWhite
+import com.aim.earny.ui.theme.TextWhite40
+import com.aim.earny.ui.theme.TextWhite60
 import com.aim.earny.vm.ProfileTab
 import com.aim.earny.vm.ProfileViewModel
-import SpanStyle
-import buildAnnotatedString
 
 @Composable
 fun ProfileScreen(
@@ -76,7 +120,6 @@ fun ProfileScreen(
         }
     ) { pad ->
         Column(Modifier.fillMaxSize().padding(pad)) {
-
             if (loading && profile == null) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = Gold)
@@ -90,8 +133,8 @@ fun ProfileScreen(
                 profile = p,
                 isOwn = isOwn,
                 isFollowing = isFollowing,
-                onEdit = { /* TODO */ },
-                onShare = { /* TODO */ },
+                onEdit = { },
+                onShare = { },
                 onFollow = { vm.toggleFollow() }
             )
 
@@ -118,10 +161,7 @@ fun ProfileScreen(
                     modifier = Modifier.fillMaxSize()
                 ) {
                     items(list) { v ->
-                        VideoTile(
-                            video = v,
-                            onLongPress = { showActionsFor = v }
-                        )
+                        VideoTile(video = v, onLongPress = { showActionsFor = v })
                     }
                 }
             }
@@ -149,8 +189,6 @@ fun ProfileScreen(
         )
     }
 }
-
-/* ═══════════════════ TOP BAR ═══════════════════ */
 
 @Composable
 private fun ProfileTopBar(username: String, onMenu: () -> Unit) {
@@ -186,8 +224,6 @@ private fun ProfileTopBar(username: String, onMenu: () -> Unit) {
     }
 }
 
-/* ═══════════════════ HEADER ═══════════════════ */
-
 @Composable
 private fun ProfileHeader(
     profile: UserProfile,
@@ -197,34 +233,25 @@ private fun ProfileHeader(
     onShare: () -> Unit,
     onFollow: () -> Unit
 ) {
-    Column(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp)
-    ) {
-        // Avatar centered, big
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
             Box(contentAlignment = Alignment.BottomEnd) {
-                // Gold story ring
                 Box(
                     Modifier.size(100.dp)
-                        .background(
-                            Brush.sweepGradient(listOf(Gold, Orange, Gold)),
-                            CircleShape
-                        )
+                        .background(Brush.sweepGradient(listOf(Gold, Orange, Gold)), CircleShape)
                         .padding(3.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Image(
-                        painter = painterResource(R.mipmap.ic_launcher_foreground),
+                        painter = painterResource(R.drawable.earny_logo),
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier
                             .fillMaxSize()
                             .clip(CircleShape)
                             .background(EarnyInput)
-                            .padding(8.dp)
                     )
                 }
-                // Plus badge
                 Box(
                     Modifier.size(26.dp)
                         .background(Gold, CircleShape)
@@ -241,7 +268,6 @@ private fun ProfileHeader(
 
         Spacer(Modifier.height(12.dp))
 
-        // Username + verified
         Row(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.Center,
@@ -265,7 +291,6 @@ private fun ProfileHeader(
 
         Spacer(Modifier.height(16.dp))
 
-        // Stats row
         Row(Modifier.fillMaxWidth()) {
             StatBox(formatCount(profile.following), "Following", Modifier.weight(1f))
             StatBox(formatCount(profile.followers), "Followers", Modifier.weight(1f))
@@ -274,7 +299,6 @@ private fun ProfileHeader(
 
         Spacer(Modifier.height(16.dp))
 
-        // Action buttons
         if (isOwn) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 SmallOutlineButton(
@@ -304,13 +328,16 @@ private fun ProfileHeader(
 
         Spacer(Modifier.height(14.dp))
 
-        // Bio
         if (profile.bio.isNotBlank()) {
-            BioText(profile.bio)
+            Text(
+                text = profile.bio,
+                color = TextWhite, fontSize = 13.sp,
+                textAlign = TextAlign.Center, lineHeight = 18.sp,
+                modifier = Modifier.fillMaxWidth()
+            )
             Spacer(Modifier.height(6.dp))
         }
 
-        // Link
         if (profile.link.isNotBlank()) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
@@ -372,20 +399,6 @@ private fun SmallIconButton(icon: ImageVector, modifier: Modifier) {
 }
 
 @Composable
-private fun BioText(bio: String) {
-    Text(
-        text = bio,
-        color = TextWhite,
-        fontSize = 13.sp,
-        textAlign = TextAlign.Center,
-        lineHeight = 18.sp,
-        modifier = Modifier.fillMaxWidth()
-    )
-}
-
-/* ═══════════════════ TABS ═══════════════════ */
-
-@Composable
 private fun ProfileTabs(
     current: ProfileTab,
     isOwn: Boolean,
@@ -444,8 +457,6 @@ private fun TabItem(
     }
 }
 
-/* ═══════════════════ GRID TILE ═══════════════════ */
-
 @Composable
 private fun VideoTile(video: Video, onLongPress: () -> Unit) {
     val gradients = listOf(
@@ -465,7 +476,6 @@ private fun VideoTile(video: Video, onLongPress: () -> Unit) {
                 detectTapGestures(onLongPress = { onLongPress() })
             }
     ) {
-        // Play icon center
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Icon(
                 Icons.Filled.PlayArrow, null,
@@ -474,7 +484,6 @@ private fun VideoTile(video: Video, onLongPress: () -> Unit) {
             )
         }
 
-        // Pin badge top-left
         if (video.isPinned) {
             Row(
                 Modifier.align(Alignment.TopStart).padding(6.dp),
@@ -482,19 +491,13 @@ private fun VideoTile(video: Video, onLongPress: () -> Unit) {
             ) {
                 Icon(
                     Icons.Filled.PushPin, null,
-                    tint = Color.White,
-                    modifier = Modifier.size(11.dp)
+                    tint = Color.White, modifier = Modifier.size(11.dp)
                 )
                 Spacer(Modifier.width(3.dp))
-                Text(
-                    "Pinned",
-                    color = Color.White, fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold
-                )
+                Text("Pinned", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
             }
         }
 
-        // Private badge
         if (video.isPrivate) {
             Icon(
                 Icons.Filled.Lock, null,
@@ -503,7 +506,6 @@ private fun VideoTile(video: Video, onLongPress: () -> Unit) {
             )
         }
 
-        // Views count bottom-left
         Row(
             Modifier.align(Alignment.BottomStart).padding(6.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -521,8 +523,6 @@ private fun VideoTile(video: Video, onLongPress: () -> Unit) {
     }
 }
 
-/* ═══════════════════ EMPTY TAB ═══════════════════ */
-
 @Composable
 private fun EmptyTab(tab: ProfileTab, isOwn: Boolean) {
     Column(
@@ -530,27 +530,31 @@ private fun EmptyTab(tab: ProfileTab, isOwn: Boolean) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        val (icon, title, sub) = when (tab) {
-            ProfileTab.VIDEOS -> Triple(
-                Icons.Filled.Videocam,
-                "No videos yet",
-                if (isOwn) "Tap Earny Orb to post" else "This user hasn't posted"
-            )
-            ProfileTab.PRIVATE -> Triple(
-                Icons.Filled.Lock,
-                "No private videos",
-                "Only you can see these"
-            )
-            ProfileTab.REPOSTS -> Triple(
-                Icons.Filled.Repeat,
-                "No reposts yet",
-                "Videos you repost will appear here"
-            )
-            ProfileTab.LIKED -> Triple(
-                Icons.Filled.Favorite,
-                "No liked videos",
-                "Videos you like appear here"
-            )
+        val icon: ImageVector
+        val title: String
+        val sub: String
+
+        when (tab) {
+            ProfileTab.VIDEOS -> {
+                icon = Icons.Filled.Videocam
+                title = "No videos yet"
+                sub = if (isOwn) "Tap Earny Orb to post" else "This user hasn't posted"
+            }
+            ProfileTab.PRIVATE -> {
+                icon = Icons.Filled.Lock
+                title = "No private videos"
+                sub = "Only you can see these"
+            }
+            ProfileTab.REPOSTS -> {
+                icon = Icons.Filled.Repeat
+                title = "No reposts yet"
+                sub = "Videos you repost will appear here"
+            }
+            ProfileTab.LIKED -> {
+                icon = Icons.Filled.Favorite
+                title = "No liked videos"
+                sub = "Videos you like appear here"
+            }
         }
 
         Box(
@@ -565,8 +569,6 @@ private fun EmptyTab(tab: ProfileTab, isOwn: Boolean) {
         Text(sub, color = TextWhite60, fontSize = 13.sp, textAlign = TextAlign.Center)
     }
 }
-
-/* ═══════════════════ MENU SHEET ═══════════════════ */
 
 @Composable
 private fun ProfileMenuSheet(onDismiss: () -> Unit, onSignOut: () -> Unit) {
@@ -611,8 +613,6 @@ private fun MenuRow(
     }
 }
 
-/* ═══════════════════ VIDEO ACTIONS SHEET ═══════════════════ */
-
 @Composable
 private fun VideoActionsSheet(
     video: Video,
@@ -643,7 +643,7 @@ private fun VideoActionsSheet(
                     tint = Color(0xFFE53935)
                 ) { onDelete() }
             } else {
-                MenuRow(Icons.Filled.Bookmark, "Save video") {}
+                MenuRow(Icons.Filled.Favorite, "Save video") {}
                 MenuRow(Icons.Filled.Share, "Share") {}
                 MenuRow(Icons.Filled.Report, "Report", tint = Color(0xFFE53935)) {}
             }
