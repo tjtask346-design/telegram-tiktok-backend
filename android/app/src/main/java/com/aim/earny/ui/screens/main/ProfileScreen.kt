@@ -42,6 +42,9 @@ import com.aim.earny.ui.components.EarnyButton
 import com.aim.earny.ui.theme.*
 import com.aim.earny.vm.ProfileTab
 import com.aim.earny.vm.ProfileViewModel
+import SpanStyle
+import buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 
 @Composable
 fun ProfileScreen(
@@ -374,14 +377,14 @@ private fun BioText(bio: String) {
     // Simple display — hashtags/mentions in different color
     val parts = bio.split(" ")
     androidx.compose.foundation.text.BasicText(
-        text = androidx.compose.ui.text.buildAnnotatedString {
+        text = buildAnnotatedString {
             parts.forEachIndexed { i, word ->
                 val color = when {
                     word.startsWith("#") -> Gold
                     word.startsWith("@") -> Color(0xFF6BA6FF)
                     else -> TextWhite
                 }
-                withStyle(androidx.compose.ui.text.SpanStyle(color = color)) {
+                withStyle(SpanStyle(color = color)) {
                     append(word)
                 }
                 if (i < parts.size - 1) append(" ")
