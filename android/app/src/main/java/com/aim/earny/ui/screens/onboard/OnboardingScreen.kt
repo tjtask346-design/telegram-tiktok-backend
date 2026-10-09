@@ -1,5 +1,6 @@
 package com.aim.earny.ui.screens.onboard
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
@@ -33,6 +34,7 @@ private val PAGES = listOf(
     OnboardPage(GradGoldOrange, "Login Without\nPassword", "Magic link, no hassle")
 )
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun OnboardingScreen(onDone: () -> Unit) {
     val pager = rememberPagerState(pageCount = { PAGES.size })
