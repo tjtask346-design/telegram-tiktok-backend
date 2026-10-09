@@ -17,14 +17,31 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.compose.*
 import com.aim.earny.ui.components.EarnyOrb
-import com.aim.earny.ui.components.UploadSheet
+import com.aim.earny.ui.screens.upload.NewPostScreen
 import com.aim.earny.ui.theme.*
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
 
 @Composable
 fun MainScaffold(onSignOut: () -> Unit) {
     val nav = rememberNavController()
     val current = nav.currentBackStackEntryAsState().value?.destination?.route
-    var showUpload by remember { mutableStateOf(false) }
+    var showNewPost by remember { mutableStateOf(false) }
+
+    // Reactive unread state
+    val db = remember { FirebaseFirestore.getInstance() }
+    val uid = FirebaseAuth.getInstance().currentUser?.uid
+    var hasUnread by remember { mutableStateOf(false) }
+
+    LaunchedEffect(uid) {
+        if (uid == null) return@LaunchedEffect
+        db.collection("messages")
+            .whereEqualTo("receiver", uid)
+            .whereEqualTo("unread", true)
+            .addSnapshotListener { snap, _ ->
+                hasUnread = (snap?.size() ?: 0) > 0
+            }
+    }
 
     Box(Modifier.fillMaxSize().background(EarnyBlack)) {
         NavHost(
@@ -46,30 +63,41 @@ fun MainScaffold(onSignOut: () -> Unit) {
                 Modifier.fillMaxSize().padding(horizontal = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                NavItem(Icons.Filled.Home, "Home", current == "feed", Modifier.weight(1f)) {
+                NavItem(Icons.Filled.Home, "Home", current == "feed",
+                    Modifier.weight(1f), badge = false) {
                     nav.navigate("feed") { launchSingleTop = true; popUpTo("feed") }
                 }
-                NavItem(Icons.Filled.People, "Friends", current == "discover", Modifier.weight(1f)) {
+                NavItem(Icons.Filled.People, "Friends", current == "discover",
+                    Modifier.weight(1f), badge = false) {
                     nav.navigate("discover") { launchSingleTop = true; popUpTo("feed") }
                 }
                 Box(Modifier.weight(1.2f), contentAlignment = Alignment.Center) {
-                    EarnyOrb(size = 52.dp) { showUpload = true }
+                    EarnyOrb(size = 52.dp) { showNewPost = true }
                 }
-                NavItem(Icons.Filled.Email, "Inbox", current == "inbox", Modifier.weight(1f), badge = true) {
+                NavItem(Icons.Filled.Email, "Inbox", current == "inbox",
+                    Modifier.weight(1f), badge = hasUnread) {
                     nav.navigate("inbox") { launchSingleTop = true; popUpTo("feed") }
                 }
-                NavItem(Icons.Filled.Person, "You", current == "profile", Modifier.weight(1f)) {
+                NavItem(Icons.Filled.Person, "You", current == "profile",
+                    Modifier.weight(1f), badge = false) {
                     nav.navigate("profile") { launchSingleTop = true; popUpTo("feed") }
                 }
             }
         }
-    }
 
-    if (showUpload) {
-        UploadSheet(
-            onDismiss = { showUpload = false },
-            onUploadStart = { showUpload = false }
-        )
+        // Full-screen new post overlay
+        if (showNewPost) {
+            Box(Modifier.fillMaxSize().background(Color.Black)) {
+                NewPostScreen(
+                    onClose = { showNewPost = false },
+                    onPosted = {
+                        showNewPost = false
+                        // Reset feed to "feed" tab; ViewModel reload happens on next composition
+                        nav.navigate("feed") { launchSingleTop = true; popUpTo("feed") }
+                    }
+                )
+            }
+        }
     }
 }
 
@@ -95,6 +123,7 @@ private fun NavItem(
                         Modifier.size(8.dp)
                             .background(HeartRed, androidx.compose.foundation.shape.CircleShape)
                             .align(Alignment.TopEnd)
+                            .offset(x = 2.dp, y = (-2).dp)
                     )
                 }
             }

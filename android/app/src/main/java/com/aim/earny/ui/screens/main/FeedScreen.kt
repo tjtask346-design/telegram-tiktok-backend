@@ -50,6 +50,9 @@ fun FeedScreen(onSignOut: () -> Unit, vm: FeedViewModel = viewModel()) {
     var tab by remember { mutableStateOf(1) }
     val pager = rememberPagerState(pageCount = { videos.size.coerceAtLeast(0) })
 
+    // Reload feed each time this screen composes (after upload)
+    LaunchedEffect(Unit) { vm.load() }
+
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         when {
             loading && videos.isEmpty() -> {

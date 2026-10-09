@@ -1,0 +1,354 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
+package com.aim.earny.ui.screens.upload
+
+import android.app.Activity
+import android.content.Intent
+import android.net.Uri
+import android.provider.MediaStore
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.media3.common.MediaItem
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
+import com.aim.earny.ui.theme.*
+import com.aim.earny.vm.UploadState
+import com.aim.earny.vm.UploadViewModel
+
+@Composable
+fun NewPostScreen(
+    onClose: () -> Unit,
+    onPosted: () -> Unit
+) {
+    val context = LocalContext.current
+    val vm: UploadViewModel = viewModel()
+    val state by vm.state.collectAsStateWithLifecycle()
+
+    var selectedUri by remember { mutableStateOf<Uri?>(null) }
+    var caption by remember { mutableStateOf("") }
+    var showSheet by remember { mutableStateOf(true) }
+
+    val galleryLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) { selectedUri = uri; showSheet = false }
+    }
+
+    val cameraLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            result.data?.data?.let { selectedUri = it; showSheet = false }
+        }
+    }
+
+    // Navigate away when upload done
+    LaunchedEffect(state) {
+        if (state is UploadState.Done) {
+            kotlinx.coroutines.delay(700)
+            vm.reset()
+            onPosted()
+        }
+    }
+
+    Box(Modifier.fillMaxSize().background(Color.Black)) {
+
+        if (selectedUri == null) {
+            // ──── Empty selection state ────
+            Column(
+                Modifier.fillMaxSize().padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Box(
+                    Modifier.size(120.dp).clip(CircleShape)
+                        .background(
+                            Brush.radialGradient(
+                                listOf(Gold.copy(alpha = 0.2f), Color.Transparent)
+                            )
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Filled.AddCircle, null,
+                        tint = Gold, modifier = Modifier.size(72.dp)
+                    )
+                }
+                Spacer(Modifier.height(28.dp))
+                Text(
+                    "Create a video",
+                    color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Record or select from your gallery",
+                    color = TextWhite60, fontSize = 14.sp,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(Modifier.height(36.dp))
+
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    BigPickButton(
+                        icon = Icons.Filled.CameraAlt,
+                        label = "Camera",
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        try {
+                            val intent = Intent(MediaStore.ACTION_VIDEO_CAPTURE).apply {
+                                putExtra(MediaStore.EXTRA_VIDEO_QUALITY, 0)
+                                putExtra(MediaStore.EXTRA_DURATION_LIMIT, 60)
+                            }
+                            cameraLauncher.launch(intent)
+                        } catch (_: Throwable) {
+                            galleryLauncher.launch("video/*")
+                        }
+                    }
+                    BigPickButton(
+                        icon = Icons.Filled.PhotoLibrary,
+                        label = "Gallery",
+                        modifier = Modifier.weight(1f)
+                    ) { galleryLauncher.launch("video/*") }
+                }
+            }
+
+            // Close button top-left
+            IconButton(
+                onClick = onClose,
+                modifier = Modifier.padding(12.dp).align(Alignment.TopStart)
+            ) {
+                Icon(Icons.Filled.Close, "close", tint = Color.White, modifier = Modifier.size(28.dp))
+            }
+
+        } else {
+            // ──── Preview + Caption state ────
+            val exo = remember {
+                ExoPlayer.Builder(context).build().apply {
+                    repeatMode = ExoPlayer.REPEAT_MODE_ONE
+                    playWhenReady = true
+                }
+            }
+            LaunchedEffect(selectedUri) {
+                selectedUri?.let {
+                    exo.setMediaItem(MediaItem.fromUri(it))
+                    exo.prepare()
+                }
+            }
+            DisposableEffect(Unit) { onDispose { exo.release() } }
+
+            AndroidView(
+                factory = {
+                    PlayerView(it).apply {
+                        player = exo
+                        useController = false
+                        setShutterBackgroundColor(android.graphics.Color.BLACK)
+                    }
+                },
+                modifier = Modifier.fillMaxSize()
+            )
+
+            // Dark gradient overlay bottom
+            Box(
+                Modifier.fillMaxWidth().fillMaxHeight(0.5f)
+                    .align(Alignment.BottomCenter)
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f))
+                        )
+                    )
+            )
+
+            // Top bar
+            Row(
+                Modifier.fillMaxWidth().padding(top = 40.dp, start = 12.dp, end = 12.dp)
+                    .align(Alignment.TopCenter),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onClose) {
+                    Icon(Icons.Filled.ArrowBack, "back", tint = Color.White, modifier = Modifier.size(26.dp))
+                }
+                Spacer(Modifier.weight(1f))
+                Box(
+                    Modifier.clip(RoundedCornerShape(100.dp))
+                        .background(Gold)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) {
+                            vm.upload(context, selectedUri!!, caption, onPosted)
+                        }
+                        .padding(horizontal = 22.dp, vertical = 10.dp)
+                ) {
+                    Text(
+                        "Post",
+                        color = EarnyBlack, fontWeight = FontWeight.Bold, fontSize = 14.sp
+                    )
+                }
+            }
+
+            // Caption panel at bottom
+            Column(
+                Modifier.fillMaxWidth().align(Alignment.BottomCenter)
+                    .padding(20.dp).padding(bottom = 32.dp)
+            ) {
+                OutlinedTextField(
+                    value = caption,
+                    onValueChange = { if (it.length <= 200) caption = it },
+                    placeholder = { Text("Write a caption...", color = TextWhite60) },
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 60.dp, max = 120.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        focusedBorderColor = Gold.copy(alpha = 0.5f),
+                        unfocusedBorderColor = Color.White.copy(alpha = 0.15f),
+                        cursorColor = Gold
+                    )
+                )
+                Spacer(Modifier.height(6.dp))
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(Icons.Filled.Tag, null, tint = Gold, modifier = Modifier.size(14.dp))
+                        Text("#earny #fyp", color = Gold, fontSize = 12.sp)
+                    }
+                    Text("${caption.length}/200", color = TextWhite40, fontSize = 11.sp)
+                }
+            }
+        }
+
+        // ──── Uploading overlay ────
+        val s = state
+        AnimatedVisibility(
+            visible = s is UploadState.Uploading,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.align(Alignment.Center)
+        ) {
+            if (s is UploadState.Uploading) {
+                Box(
+                    Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.85f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(40.dp)
+                    ) {
+                        Box(
+                            Modifier.size(120.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(
+                                progress = { s.progress },
+                                color = Gold,
+                                strokeWidth = 6.dp,
+                                modifier = Modifier.size(120.dp)
+                            )
+                            Text(
+                                "${(s.progress * 100).toInt()}%",
+                                color = Color.White,
+                                fontSize = 24.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Spacer(Modifier.height(28.dp))
+                        Text(
+                            "Posting your video…",
+                            color = Color.White, fontSize = 17.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            "Sending to Telegram • please wait",
+                            color = TextWhite60, fontSize = 13.sp
+                        )
+                    }
+                }
+            }
+        }
+
+        // ──── Error toast-style snackbar ────
+        AnimatedVisibility(
+            visible = s is UploadState.Error,
+            enter = slideInVertically { it } + fadeIn(),
+            exit = slideOutVertically { it } + fadeOut(),
+            modifier = Modifier.align(Alignment.BottomCenter).padding(20.dp)
+        ) {
+            if (s is UploadState.Error) {
+                Box(
+                    Modifier.fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Color(0xFFB00020))
+                        .padding(16.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.ErrorOutline, null, tint = Color.White)
+                        Spacer(Modifier.width(10.dp))
+                        Text(s.msg, color = Color.White, fontSize = 13.sp)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BigPickButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Column(
+        modifier
+            .clip(RoundedCornerShape(20.dp))
+            .background(EarnySurface)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null, onClick = onClick
+            )
+            .padding(vertical = 28.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Icon(icon, null, tint = Gold, modifier = Modifier.size(36.dp))
+        Spacer(Modifier.height(10.dp))
+        Text(label, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+    }
+}
