@@ -14,45 +14,71 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.Icon
-import androidx.compose.material3.Text
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.MediaItem
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
+import com.aim.earny.BuildConfig
+import com.aim.earny.R
+import com.aim.earny.data.Video
 import com.aim.earny.ui.theme.*
-
-private data class DemoVideo(
-    val user: String,
-    val caption: String,
-    val grad: List<Color>,
-    val likes: String,
-    val comments: String,
-    val bookmarks: String,
-    val shares: String
-)
-
-private val DEMO = listOf(
-    DemoVideo("@earny.creator", "This trend pays 💸 #earny #fyp", GradPurplePink, "124.5K", "2.3K", "14.2K", "8.9K"),
-    DemoVideo("@skyline", "Sunset vibes 🌅 #earny", GradBlueCyan, "89.1K", "1.1K", "5.4K", "3.2K"),
-    DemoVideo("@arif.codes", "Morning routine ✨", GradOrangeRed, "45.7K", "890", "2.1K", "1.5K"),
-    DemoVideo("@mira.daily", "Chill beats 🎧 #lofi", GradGreenTeal, "210.4K", "3.4K", "22.8K", "11.6K")
-)
+import com.aim.earny.vm.FeedViewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 @Composable
-fun FeedScreen(onSignOut: () -> Unit) {
+fun FeedScreen(onSignOut: () -> Unit, vm: FeedViewModel = viewModel()) {
+    val videos by vm.videos.collectAsStateWithLifecycle()
+    val loading by vm.loading.collectAsStateWithLifecycle()
+    val error by vm.error.collectAsStateWithLifecycle()
     var tab by remember { mutableStateOf(1) }
-    val pager = rememberPagerState(pageCount = { DEMO.size })
+    val pager = rememberPagerState(pageCount = { videos.size.coerceAtLeast(0) })
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
-        VerticalPager(state = pager, modifier = Modifier.fillMaxSize()) { page ->
-            VideoPage(DEMO[page], page)
+        when {
+            loading && videos.isEmpty() -> {
+                Column(
+                    Modifier.align(Alignment.Center),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    CircularProgressIndicator(color = Gold)
+                    Spacer(Modifier.height(16.dp))
+                    Text("Loading feed...", color = TextWhite60, fontSize = 13.sp)
+                }
+            }
+            error != null && videos.isEmpty() -> {
+                Column(
+                    Modifier.align(Alignment.Center).padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text("Couldn't load feed", color = TextWhite, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(6.dp))
+                    Text(error!!, color = TextWhite60, fontSize = 12.sp)
+                    Spacer(Modifier.height(16.dp))
+                    Button(onClick = { vm.load() }) { Text("Retry") }
+                }
+            }
+            videos.isEmpty() -> EmptyFeed()
+            else -> {
+                VerticalPager(state = pager, modifier = Modifier.fillMaxSize()) { page ->
+                    VideoPage(videos[page])
+                }
+            }
         }
 
         // Top tabs
@@ -71,6 +97,34 @@ fun FeedScreen(onSignOut: () -> Unit) {
                 modifier = Modifier.size(26.dp)
             )
         }
+    }
+}
+
+@Composable
+private fun EmptyFeed() {
+    Column(
+        Modifier.fillMaxSize().background(Color.Black).padding(32.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            Modifier.size(88.dp).clip(CircleShape)
+                .background(Gold.copy(alpha = 0.12f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                Icons.Filled.Videocam, null,
+                tint = Gold, modifier = Modifier.size(44.dp)
+            )
+        }
+        Spacer(Modifier.height(20.dp))
+        Text("No videos yet", color = TextWhite, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "Be the first to create —\ntap the Earny Orb to start",
+            color = TextWhite60, fontSize = 13.sp, lineHeight = 19.sp,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+        )
     }
 }
 
@@ -96,31 +150,57 @@ private fun Tab(text: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun VideoPage(video: DemoVideo, pageIndex: Int) {
+private fun VideoPage(video: Video) {
     var liked by remember { mutableStateOf(false) }
     var following by remember { mutableStateOf(false) }
     var burstKey by remember { mutableStateOf(0) }
-    val infinite = rememberInfiniteTransition(label = "tick")
+    val ctx = LocalContext.current
 
-    val ticker by infinite.animateFloat(
-        initialValue = 0f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(8000, easing = LinearEasing)),
-        label = "tick"
-    )
+    val exo = remember {
+        ExoPlayer.Builder(ctx).build().apply {
+            repeatMode = ExoPlayer.REPEAT_MODE_ONE
+            playWhenReady = true
+        }
+    }
+
+    LaunchedEffect(video.id) {
+        if (video.telegramMsgId > 0) {
+            val url = BuildConfig.API_BASE.trimEnd('/') + "/stream/" + video.telegramMsgId
+            exo.setMediaItem(MediaItem.fromUri(url))
+            exo.prepare()
+        }
+    }
+
+    DisposableEffect(Unit) { onDispose { exo.release() } }
 
     Box(
-        Modifier.fillMaxSize()
-            .background(Brush.verticalGradient(video.grad))
+        Modifier.fillMaxSize().background(Color.Black)
             .pointerInput(Unit) {
                 detectTapGestures(
                     onDoubleTap = {
                         if (!liked) liked = true
                         burstKey++
+                    },
+                    onTap = {
+                        if (exo.isPlaying) exo.pause() else exo.play()
                     }
                 )
             }
     ) {
-        // Big heart burst
+        if (video.telegramMsgId > 0) {
+            AndroidView(
+                factory = {
+                    PlayerView(it).apply {
+                        player = exo
+                        useController = false
+                        setShutterBackgroundColor(android.graphics.Color.BLACK)
+                    }
+                },
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+
+        // Heart burst
         key(burstKey) {
             if (burstKey > 0) {
                 var show by remember { mutableStateOf(true) }
@@ -144,20 +224,19 @@ private fun VideoPage(video: DemoVideo, pageIndex: Int) {
 
         // Bottom info
         Column(
-            Modifier.align(Alignment.BottomStart).padding(start = 16.dp, bottom = 90.dp, end = 80.dp)
+            Modifier.align(Alignment.BottomStart)
+                .padding(start = 16.dp, bottom = 90.dp, end = 80.dp)
         ) {
-            Text(video.user, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(6.dp))
-            Text(video.caption, color = Color.White, fontSize = 14.sp)
+            Text("@" + video.uploader, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            if (video.caption.isNotBlank()) {
+                Spacer(Modifier.height(6.dp))
+                Text(video.caption, color = Color.White, fontSize = 14.sp)
+            }
             Spacer(Modifier.height(10.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Filled.MusicNote, null, tint = Color.White, modifier = Modifier.size(14.dp))
                 Spacer(Modifier.width(6.dp))
-                Text(
-                    "Original sound - earny.creator",
-                    color = Color.White, fontSize = 12.sp,
-                    modifier = Modifier.offset(x = (-40 * (1f - ticker)).dp)
-                )
+                Text("Original sound - earny", color = Color.White, fontSize = 12.sp)
             }
         }
 
@@ -167,16 +246,21 @@ private fun VideoPage(video: DemoVideo, pageIndex: Int) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
-            // Avatar
             Box {
                 Box(
-                    Modifier.size(48.dp).background(Gold, CircleShape),
+                    Modifier.size(48.dp).clip(CircleShape).background(Gold),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(video.user.drop(1).take(1).uppercase(), color = EarnyBlack, fontWeight = FontWeight.Bold)
+                    androidx.compose.foundation.Image(
+                        painter = painterResource(R.mipmap.ic_launcher),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.size(48.dp).clip(CircleShape)
+                    )
                 }
                 Box(
-                    Modifier.size(20.dp).background(if (following) Gold else HeartRed, CircleShape)
+                    Modifier.size(20.dp)
+                        .background(if (following) Gold else HeartRed, CircleShape)
                         .align(Alignment.BottomCenter).offset(y = 8.dp)
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
@@ -194,23 +278,12 @@ private fun VideoPage(video: DemoVideo, pageIndex: Int) {
 
             ActionItem(
                 icon = if (liked) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                count = video.likes,
-                tint = if (liked) HeartRed else Color.White,
-                iconScale = if (liked) 1.15f else 1f
+                count = (video.likes + if (liked) 1 else 0).toString(),
+                tint = if (liked) HeartRed else Color.White
             ) { if (!liked) liked = true }
-
-            ActionItem(Icons.Filled.ChatBubble, video.comments) {}
-            ActionItem(Icons.Filled.Bookmark, video.bookmarks) {}
-            ActionItem(Icons.Filled.Share, video.shares) {}
-        }
-
-        // Progress bar at bottom
-        Box(
-            Modifier.align(Alignment.BottomCenter).padding(bottom = 80.dp)
-                .fillMaxWidth(0.4f).height(2.dp)
-                .background(Color.White.copy(alpha = 0.3f))
-        ) {
-            Box(Modifier.fillMaxHeight().fillMaxWidth(ticker).background(Gold))
+            ActionItem(Icons.Filled.ChatBubble, video.comments.toString()) {}
+            ActionItem(Icons.Filled.Bookmark, "0") {}
+            ActionItem(Icons.Filled.Share, "0") {}
         }
     }
 }
@@ -220,14 +293,12 @@ private fun ActionItem(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     count: String,
     tint: Color = Color.White,
-    iconScale: Float = 1f,
     onClick: () -> Unit
 ) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Icon(
-            icon, null,
-            tint = tint,
-            modifier = Modifier.size(30.dp).scale(iconScale).clickable(
+            icon, null, tint = tint,
+            modifier = Modifier.size(30.dp).clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null, onClick = onClick
             )
