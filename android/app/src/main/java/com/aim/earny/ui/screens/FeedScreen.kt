@@ -1,5 +1,6 @@
 package com.aim.earny.ui.screens
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
@@ -29,6 +30,7 @@ import com.aim.earny.BuildConfig
 import com.aim.earny.data.Video
 import com.aim.earny.vm.FeedViewModel
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun FeedScreen(onSignOut: () -> Unit, vm: FeedViewModel = viewModel()) {
     val videos by vm.videos.collectAsStateWithLifecycle()
