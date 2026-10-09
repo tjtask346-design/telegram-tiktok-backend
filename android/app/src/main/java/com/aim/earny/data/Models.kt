@@ -9,7 +9,12 @@ data class Video(
     val telegramMsgId: Long = 0,
     val likes: Long = 0,
     val views: Long = 0,
-    val comments: Long = 0
+    val comments: Long = 0,
+    val isPinned: Boolean = false,
+    val isPrivate: Boolean = false,
+    val isDraft: Boolean = false,
+    val isRepost: Boolean = false,
+    val createdAt: Long = 0
 )
 
 data class UploadResponse(
@@ -20,10 +25,18 @@ data class UploadResponse(
 
 data class UserProfile(
     val uid: String = "",
+    val firstName: String = "",
+    val lastName: String = "",
     val fullName: String = "",
+    val username: String = "",
     val email: String = "",
     val bio: String = "",
-    val followers: Long = 0
+    val link: String = "",
+    val followers: Long = 0,
+    val following: Long = 0,
+    val totalLikes: Long = 0,
+    val videoCount: Long = 0,
+    val verified: Boolean = false
 )
 
 data class InboxMessage(
