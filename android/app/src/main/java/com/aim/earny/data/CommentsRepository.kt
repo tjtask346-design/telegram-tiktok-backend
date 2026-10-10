@@ -59,6 +59,19 @@ class CommentsRepository(
         batch.update(videoRef, "comments", FieldValue.increment(1))
         batch.commit().await()
 
+        // Notify the video owner
+        runCatching {
+            val vdoc = videoRef.get().await()
+            val uploader = vdoc.getString("uploader") ?: return@runCatching
+            if (uploader == me.uid) return@runCatching
+            NotifyHelper.comment(
+                targetUid = uploader,
+                videoId = videoId,
+                title = "New comment 💬",
+                body = "@$username: " + trimmed.take(60)
+            )
+        }
+
         return Comment(
             id = commentRef.id,
             videoId = videoId,

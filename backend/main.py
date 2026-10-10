@@ -13,7 +13,7 @@ from fastapi import (
 from fastapi.responses import StreamingResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 import firebase_admin
-from firebase_admin import credentials, firestore
+from firebase_admin import credentials, firestore, messaging
 
 from config import FIREBASE_JSON_PATH, MAX_UPLOAD_BYTES, TG_CHANNEL_ID
 from telegram_client import (
@@ -358,4 +358,95 @@ async def get_profile_pic(msg_id: int):
     except Exception as e:
         log.warning(f"profile-pic fetch failed: {e}")
         raise HTTPException(404, "Not found")
+
+# ═══════════════════════════════════════════════════════
+#  PUSH NOTIFICATIONS — FCM via Firebase Admin
+# ═══════════════════════════════════════════════════════
+
+from pydantic import BaseModel as _PydBase
+
+class _NotifyReq(_PydBase):
+    target_uid: str
+    kind: str            # "like" | "comment" | "follow"
+    title: str = ""
+    body: str = ""
+    video_id: str = ""
+    data_extra: str = ""
+
+
+@app.post("/notify")
+async def notify(
+    payload: _NotifyReq,
+    authorization: str = Header(...),
+):
+    sender_uid = await verify_token(authorization)
+    if sender_uid == payload.target_uid:
+        return {"ok": True, "skipped": "self"}
+
+    # Lookup target's FCM token
+    try:
+        doc = db.collection("users").document(payload.target_uid).get()
+        if not doc.exists:
+            return {"ok": False, "reason": "target not found"}
+        target_data = doc.to_dict() or {}
+        token = target_data.get("fcmToken")
+        if not token:
+            return {"ok": False, "reason": "no token"}
+    except Exception as e:
+        log.warning(f"notify lookup failed: {e}")
+        return {"ok": False, "reason": "lookup failed"}
+
+    # Sender display name
+    try:
+        s_doc = db.collection("users").document(sender_uid).get()
+        s_data = s_doc.to_dict() or {}
+        sender_name = (s_data.get("fullName")
+                       or s_data.get("username")
+                       or "Someone")
+    except Exception:
+        sender_name = "Someone"
+
+    title = payload.title or "Earny"
+    body = payload.body or f"{sender_name} interacted with your content"
+
+    message = messaging.Message(
+        notification=messaging.Notification(title=title, body=body),
+        data={
+            "kind": payload.kind,
+            "videoId": payload.video_id,
+            "senderUid": sender_uid,
+        },
+        token=token,
+    )
+
+    try:
+        messaging.send(message)
+        log.info(f"notify sent to {payload.target_uid} ({payload.kind})")
+        return {"ok": True}
+    except Exception as e:
+        log.warning(f"notify send failed: {e}")
+        # If token is stale, remove it
+        try:
+            db.collection("users").document(payload.target_uid).update(
+                {"fcmToken": firestore.DELETE_FIELD}
+            )
+        except Exception:
+            pass
+        return {"ok": False, "reason": str(e)}
+
+
+@app.post("/fcm-token")
+async def register_fcm_token(
+    request: Request,
+    authorization: str = Header(...),
+):
+    uid = await verify_token(authorization)
+    data = await request.json()
+    token = (data.get("token") or "").strip()
+    if not token:
+        raise HTTPException(400, "Missing token")
+    db.collection("users").document(uid).set(
+        {"fcmToken": token}, merge=True
+    )
+    return {"ok": True}
 

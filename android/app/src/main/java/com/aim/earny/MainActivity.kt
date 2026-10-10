@@ -15,7 +15,10 @@ import com.aim.earny.navigation.Routes
 import com.aim.earny.ui.theme.EarnyBlack
 import com.aim.earny.ui.theme.EarnyTheme
 import com.aim.earny.ui.theme.Gold
+import com.aim.earny.data.FcmRepository
+import com.aim.earny.notifications.NotificationHelper
 import com.google.firebase.auth.FirebaseAuth
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
@@ -35,6 +38,16 @@ fun RootApp() {
 
     LaunchedEffect(Unit) {
         delay(150)
+        // Ensure notification channel
+        NotificationHelper.ensureChannel(this@MainActivity)
+
+        // Register FCM token if signed in
+        if (auth.currentUser != null) {
+            launch {
+                runCatching { FcmRepository().registerToken() }
+            }
+        }
+
         // CRITICAL: only use simple routes that match their pattern
         // to avoid NavHost crash from resolved-route mismatch.
         startRoute = try {

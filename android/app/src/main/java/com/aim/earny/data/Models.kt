@@ -61,3 +61,18 @@ data class Comment(
     val createdAtMs: Long = 0L,
     val isMine: Boolean = false
 )
+
+
+data class NotifyRequest(
+    val target_uid: String,
+    val kind: String,
+    val title: String = "",
+    val body: String = "",
+    val video_id: String = "",
+    val data_extra: String = ""
+)
+
+data class SimpleResponse(
+    val ok: Boolean = false,
+    val reason: String = ""
+)

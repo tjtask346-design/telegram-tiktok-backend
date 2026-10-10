@@ -61,6 +61,29 @@ class VideoRepository(
             batch.update(videoRef, "likes", FieldValue.increment(-1))
         }
         batch.commit().await()
+
+        // Fire notification (only on new like, not unlike)
+        if (newState) {
+            runCatching {
+                val vdoc = videoRef.get().await()
+                val uploader = vdoc.getString("uploader") ?: return@runCatching
+                if (uploader == me) return@runCatching
+                val caption = vdoc.getString("caption") ?: ""
+                // Sender's name
+                val meDoc = db.collection("users").document(me).get().await()
+                val sender = (meDoc.getString("username")
+                    ?: meDoc.getString("fullName")
+                    ?: "Someone")
+                NotifyHelper.like(
+                    targetUid = uploader,
+                    videoId = videoId,
+                    title = "New like ❤️",
+                    body = "@$sender liked your video" +
+                        (if (caption.isNotBlank()) ": $caption" else "")
+                )
+            }
+        }
+
         return newState
     }
 

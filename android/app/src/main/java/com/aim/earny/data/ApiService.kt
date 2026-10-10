@@ -10,6 +10,13 @@ import retrofit2.http.Path
 
 interface ApiService {
 
+    @POST("notify")
+    suspend fun notify(
+        @Header("Authorization") auth: String,
+        @Body body: NotifyRequest
+    ): SimpleResponse
+
+
     @Multipart
     @POST("upload")
     suspend fun upload(

@@ -68,6 +68,22 @@ class FollowRepository(
             batch.update(meRef, "following", FieldValue.increment(-1))
         }
         batch.commit().await()
+
+        // Notify followee (only on new follow)
+        if (newState) {
+            runCatching {
+                val meDoc = db.collection("users").document(me).get().await()
+                val sender = (meDoc.getString("username")
+                    ?: meDoc.getString("fullName")
+                    ?: "Someone")
+                NotifyHelper.follow(
+                    targetUid = targetUid,
+                    title = "New follower 👥",
+                    body = "@$sender started following you"
+                )
+            }
+        }
+
         return newState
     }
 
