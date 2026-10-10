@@ -16,6 +16,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.compose.*
+import com.aim.earny.data.AppEvents
 import com.aim.earny.ui.components.EarnyOrb
 import com.aim.earny.ui.screens.profile.AddFriendsScreen
 import com.aim.earny.ui.screens.profile.EditProfileScreen
@@ -103,6 +104,10 @@ fun MainScaffold(onSignOut: () -> Unit) {
                     onClose = { showNewPost = false },
                     onPosted = {
                         showNewPost = false
+                        // Signal Feed to reload from Firestore
+                        AppEvents.triggerFeedRefresh()
+                        // Also refresh Profile so the new video appears there
+                        AppEvents.triggerProfileRefresh()
                         nav.navigate("feed") { launchSingleTop = true; popUpTo("feed") }
                     }
                 )
@@ -113,7 +118,11 @@ fun MainScaffold(onSignOut: () -> Unit) {
             Box(Modifier.fillMaxSize().background(EarnyBlack)) {
                 EditProfileScreen(
                     onBack = { showEditProfile = false },
-                    onSaved = { showEditProfile = false }
+                    onSaved = {
+                        showEditProfile = false
+                        // Signal Profile to reload from Firestore
+                        AppEvents.triggerProfileRefresh()
+                    }
                 )
             }
         }

@@ -44,7 +44,6 @@ class FeedViewModel : ViewModel() {
     /** Video IDs we've already counted a view for this session */
     private val viewedIds = mutableSetOf<String>()
 
-    init { load() }
 
     fun load() {
         viewModelScope.launch {

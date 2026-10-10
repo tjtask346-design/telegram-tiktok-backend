@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.aim.earny.data.AppEvents
 import com.aim.earny.data.UserProfile
 import com.aim.earny.data.Video
 import com.aim.earny.data.formatCount
@@ -63,7 +64,10 @@ fun ProfileScreen(
     targetUid: String? = null,
     vm: ProfileViewModel = viewModel()
 ) {
-    LaunchedEffect(targetUid) { runCatching { vm.load(targetUid) } }
+    val profileRefresh by AppEvents.profileRefresh.collectAsStateWithLifecycle()
+    LaunchedEffect(targetUid, profileRefresh) {
+        runCatching { vm.load(targetUid) }
+    }
 
     val profile by vm.profile.collectAsStateWithLifecycle()
     val videos by vm.videos.collectAsStateWithLifecycle()

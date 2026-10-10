@@ -42,6 +42,7 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.aim.earny.BuildConfig
+import com.aim.earny.data.AppEvents
 import com.aim.earny.data.Video
 import com.aim.earny.data.formatCount
 import com.aim.earny.ui.theme.*
@@ -77,7 +78,8 @@ fun FeedScreen(vm: FeedViewModel = viewModel()) {
     val likedIds by vm.likedIds.collectAsStateWithLifecycle()
     var tab by remember { mutableStateOf(1) }
 
-    LaunchedEffect(Unit) { vm.load() }
+    val feedRefresh by AppEvents.feedRefresh.collectAsStateWithLifecycle()
+    LaunchedEffect(feedRefresh) { vm.load() }
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         when {
