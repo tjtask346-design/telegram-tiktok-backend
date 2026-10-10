@@ -5,6 +5,7 @@ import aiofiles
 from contextlib import asynccontextmanager
 
 from fastapi import (
+    Response,
     FastAPI, UploadFile, File, Form, Header, HTTPException, Request,
 )
 from fastapi.responses import StreamingResponse
@@ -123,8 +124,22 @@ async def upload(
     return {"videoId": doc.id, "msgId": msg_id, "size": total}
 
 
-@app.get("/stream/{msg_id}")
+@app.api_route("/stream/{msg_id}", methods=["GET", "HEAD"])
 async def stream(msg_id: int, request: Request):
+    # HEAD requests: return headers only, no body
+    if request.method == "HEAD":
+        info = await get_video_info(msg_id)
+        if not info:
+            raise HTTPException(404, "Video not found")
+        return Response(
+            content=b"",
+            media_type=info["mime"],
+            headers={
+                "Accept-Ranges": "bytes",
+                "Content-Length": str(info["size"]),
+                "Cache-Control": "public, max-age=86400",
+            },
+        )
     info = await get_video_info(msg_id)
     if not info:
         raise HTTPException(404, "Video not found")
