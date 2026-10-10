@@ -113,17 +113,39 @@ async def stream_photo(msg_id: int):
 
 
 async def get_photo_info(msg_id: int):
+    """Return photo/document info. Handles PhotoSize, PhotoCachedSize,
+    PhotoSizeProgressive and Document because Telegram may return any."""
     client = await get_client()
     msg = await client.get_messages(TG_CHANNEL_ID, ids=msg_id)
     if not msg or not msg.media:
         return None
+
     size = 0
     mime = "image/jpeg"
+
     if msg.photo and msg.photo.sizes:
-        size = msg.photo.sizes[-1].size
+        # Pick the largest entry — last is usually the biggest
+        last = msg.photo.sizes[-1]
+        # PhotoSize / PhotoCachedSize have `.size`
+        if hasattr(last, "size") and last.size:
+            size = last.size
+        # PhotoSizeProgressive has `.sizes` (list of cumulative ints)
+        elif hasattr(last, "sizes") and last.sizes:
+            size = last.sizes[-1]
+        else:
+            # Fallback: try each from the end
+            for s in reversed(msg.photo.sizes):
+                if hasattr(s, "size") and s.size:
+                    size = s.size
+                    break
+                if hasattr(s, "sizes") and s.sizes:
+                    size = s.sizes[-1]
+                    break
+
     elif msg.document:
         size = msg.document.size or 0
         mime = msg.document.mime_type or "image/jpeg"
+
     return {"size": size, "mime": mime}
 
 
