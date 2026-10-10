@@ -21,7 +21,8 @@ data class Video(
 data class UploadResponse(
     val videoId: String = "",
     val msgId: Long = 0,
-    val size: Long = 0
+    val size: Long = 0,
+    val ok: Boolean = false
 )
 
 data class UserProfile(
@@ -37,7 +38,8 @@ data class UserProfile(
     val following: Long = 0,
     val totalLikes: Long = 0,
     val videoCount: Long = 0,
-    val verified: Boolean = false
+    val verified: Boolean = false,
+    val profilePicMsgId: Long = 0L
 )
 
 data class InboxMessage(

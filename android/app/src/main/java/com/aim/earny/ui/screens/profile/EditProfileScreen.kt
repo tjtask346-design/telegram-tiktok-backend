@@ -1,6 +1,13 @@
 package com.aim.earny.ui.screens.profile
 
 import android.content.Intent
+import retrofit2.converter.gson.GsonConverterFactory
+import retrofit2.Retrofit
+import com.aim.earny.data.ProfilePicRepository
+import com.aim.earny.data.ApiService
+import com.aim.earny.BuildConfig
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.rememberLauncherForActivityResult
 import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -45,7 +52,34 @@ fun EditProfileScreen(
     val auth = remember { FirebaseAuth.getInstance() }
     val db = remember { FirebaseFirestore.getInstance() }
     val scope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
     val uid = auth.currentUser?.uid
+    val picRepo = remember {
+        val api = Retrofit.Builder()
+            .baseUrl(BuildConfig.API_BASE.trimEnd('/') + "/")
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+            .create(ApiService::class.java)
+        ProfilePicRepository(api)
+    }
+
+    val picPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        uploadingPic = true
+        errorMsg = null
+        scope.launch {
+            try {
+                val newId = picRepo.upload(context, uri)
+                picMsgId = newId
+            } catch (e: Exception) {
+                errorMsg = "Pic upload failed: ${e.message}"
+            } finally {
+                uploadingPic = false
+            }
+        }
+    }
 
     var firstName by remember { mutableStateOf("") }
     var lastName by remember { mutableStateOf("") }
@@ -57,6 +91,8 @@ fun EditProfileScreen(
     var saving by remember { mutableStateOf(false) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
     var nameState by remember { mutableStateOf(NameState.Idle) }
+    var picMsgId by remember { mutableStateOf(0L) }
+    var uploadingPic by remember { mutableStateOf(false) }
 
     // Load existing — defensive
     LaunchedEffect(uid) {
@@ -69,6 +105,7 @@ fun EditProfileScreen(
             originalUsername = username.lowercase()
             bio = doc.getString("bio") ?: ""
             link = doc.getString("link") ?: ""
+            picMsgId = (doc.get("profilePicMsgId") as? Number)?.toLong() ?: 0L
         } catch (e: Exception) {
             errorMsg = "Couldn't load: ${e.message}"
         }
@@ -143,29 +180,39 @@ fun EditProfileScreen(
             Box(contentAlignment = Alignment.BottomEnd) {
                 SafeAvatar(
                     name = username.ifBlank { firstName.ifBlank { "?" } },
-                    size = 100.dp
+                    size = 100.dp,
+                    picMsgId = picMsgId
                 )
                 Box(
                     Modifier.size(32.dp)
                         .background(Gold, CircleShape)
                         .clickable(
+                            enabled = !uploadingPic,
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null
                         ) {
-                            errorMsg = "Profile pic upload coming soon"
+                            picPicker.launch("image/*")
                         },
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        Icons.Filled.CameraAlt, null,
-                        tint = EarnyBlack, modifier = Modifier.size(18.dp)
-                    )
+                    if (uploadingPic) {
+                        CircularProgressIndicator(
+                            color = EarnyBlack,
+                            strokeWidth = 2.dp,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    } else {
+                        Icon(
+                            Icons.Filled.CameraAlt, null,
+                            tint = EarnyBlack, modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
             }
 
             Spacer(Modifier.height(8.dp))
             Text(
-                "Tap camera to change",
+                if (uploadingPic) "Uploading…" else "Tap camera to change",
                 color = TextWhite40, fontSize = 11.sp
             )
 

@@ -26,4 +26,11 @@ interface ApiService {
         @Header("Authorization") auth: String,
         @Path("videoId") videoId: String
     )
+
+    @Multipart
+    @POST("profile-pic")
+    suspend fun uploadProfilePic(
+        @Header("Authorization") auth: String,
+        @Part file: MultipartBody.Part
+    ): UploadResponse
 }

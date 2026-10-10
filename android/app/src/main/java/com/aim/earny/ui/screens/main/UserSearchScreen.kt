@@ -130,7 +130,8 @@ fun UserSearchScreen(
                             name = user.username.ifBlank {
                                 user.fullName.ifBlank { user.email }
                             },
-                            size = 52.dp
+                            size = 52.dp,
+                            picMsgId = user.profilePicMsgId
                         )
                         Spacer(Modifier.width(14.dp))
                         Column(Modifier.weight(1f)) {

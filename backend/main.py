@@ -18,6 +18,7 @@ from firebase_admin import credentials, firestore
 from config import FIREBASE_JSON_PATH, MAX_UPLOAD_BYTES, TG_CHANNEL_ID
 from telegram_client import (
     get_client, upload_video, stream_video, get_video_info, delete_video,
+    upload_photo, stream_photo, get_photo_info,
 )
 from auth import verify_token
 
@@ -287,3 +288,74 @@ async def delete_own_video(video_id: str, authorization: str = Header(...)):
     await delete_video(data["telegramMsgId"])
     doc_ref.delete()
     return {"ok": True}
+
+# ═══════════════════════════════════════════════════════
+#  PROFILE PICTURE — upload + serve
+# ═══════════════════════════════════════════════════════
+
+@app.post("/profile-pic")
+async def upload_profile_pic(
+    file: UploadFile = File(...),
+    authorization: str = Header(...),
+):
+    uid = await verify_token(authorization)
+    log.info(f"profile-pic upload uid={uid}")
+
+    # Validate mime
+    ct = (file.content_type or "").lower()
+    if not ct.startswith("image/"):
+        raise HTTPException(400, "Only images allowed")
+
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
+    tmp_path = tmp.name
+    tmp.close()
+    total = 0
+
+    try:
+        async with aiofiles.open(tmp_path, "wb") as f:
+            while True:
+                chunk = await file.read(256 * 1024)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > 5 * 1024 * 1024:
+                    raise HTTPException(413, "Image > 5 MB")
+                await f.write(chunk)
+        if total == 0:
+            raise HTTPException(400, "Empty file")
+
+        msg_id = await upload_photo(tmp_path, f"pic:{uid}")
+    finally:
+        try: os.unlink(tmp_path)
+        except: pass
+
+    # Save reference in Firestore
+    db.collection("users").document(uid).set(
+        {"profilePicMsgId": msg_id, "profilePicUpdatedAt": firestore.SERVER_TIMESTAMP},
+        merge=True,
+    )
+
+    return {"ok": True, "msgId": msg_id}
+
+
+@app.get("/profile-pic/{msg_id}")
+async def get_profile_pic(msg_id: int):
+    try:
+        info = await get_photo_info(msg_id)
+        if not info:
+            raise HTTPException(404, "Not found")
+        chunks = []
+        async for chunk in stream_photo(msg_id):
+            chunks.append(chunk)
+        data = b"".join(chunks)
+        return Response(
+            content=data,
+            media_type="image/jpeg",
+            headers={"Cache-Control": "public, max-age=604800"},
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.warning(f"profile-pic fetch failed: {e}")
+        raise HTTPException(404, "Not found")
+

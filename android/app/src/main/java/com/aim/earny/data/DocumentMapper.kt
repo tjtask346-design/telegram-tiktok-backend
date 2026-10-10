@@ -71,7 +71,8 @@ object DocumentMapper {
         following = doc.lng("following"),
         totalLikes = doc.lng("totalLikes"),
         videoCount = doc.lng("videoCount"),
-        verified = doc.bool("verified")
+        verified = doc.bool("verified"),
+        profilePicMsgId = doc.lng("profilePicMsgId")
     )
 
     fun user(doc: QueryDocumentSnapshot): UserProfile = user(doc as DocumentSnapshot)

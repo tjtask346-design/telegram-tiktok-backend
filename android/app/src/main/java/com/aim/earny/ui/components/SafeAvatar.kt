@@ -13,10 +13,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
+import com.aim.earny.BuildConfig
 import com.aim.earny.ui.theme.Gold
 import com.aim.earny.ui.theme.Orange
 
@@ -25,7 +28,8 @@ fun SafeAvatar(
     name: String,
     size: Dp = 96.dp,
     modifier: Modifier = Modifier,
-    showStoryRing: Boolean = false   // default OFF
+    showStoryRing: Boolean = false,
+    picMsgId: Long = 0L
 ) {
     val letter = name.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "?"
 
@@ -42,19 +46,31 @@ fun SafeAvatar(
         modifier = outerMod,
         contentAlignment = Alignment.Center
     ) {
-        Box(
-            Modifier
-                .fillMaxSize()
-                .clip(CircleShape)
-                .background(Color(0xFF1E1E1E)),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                letter,
-                color = Gold,
-                fontSize = (size.value * 0.4f).sp,
-                fontWeight = FontWeight.ExtraBold
+        if (picMsgId > 0L) {
+            AsyncImage(
+                model = BuildConfig.API_BASE.trimEnd('/') + "/profile-pic/" + picMsgId,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(CircleShape)
+                    .background(Color(0xFF1E1E1E))
             )
+        } else {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .clip(CircleShape)
+                    .background(Color(0xFF1E1E1E)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    letter,
+                    color = Gold,
+                    fontSize = (size.value * 0.4f).sp,
+                    fontWeight = FontWeight.ExtraBold
+                )
+            }
         }
     }
 }

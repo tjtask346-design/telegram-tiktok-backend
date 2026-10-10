@@ -242,7 +242,8 @@ private fun ProfileHeader(
                 name = profile.username.ifBlank {
                     profile.fullName.ifBlank { profile.email }
                 },
-                size = 100.dp
+                size = 100.dp,
+                picMsgId = profile.profilePicMsgId
             )
             Box(
                 Modifier

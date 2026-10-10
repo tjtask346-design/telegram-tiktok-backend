@@ -89,3 +89,38 @@ async def get_video_info(msg_id):
 async def delete_video(msg_id):
     client = await get_client()
     await client.delete_messages(TG_CHANNEL_ID, [msg_id])
+
+async def upload_photo(file_path: str, caption: str = "") -> int:
+    """Upload an image to the channel. Returns msg_id."""
+    client = await get_client()
+    msg = await client.send_file(
+        TG_CHANNEL_ID,
+        file_path,
+        caption=caption[:512],
+        force_document=False,
+    )
+    return msg.id
+
+
+async def stream_photo(msg_id: int):
+    """Yield photo bytes."""
+    client = await get_client()
+    msg = await client.get_messages(TG_CHANNEL_ID, ids=msg_id)
+    if not msg or not msg.photo:
+        raise FileNotFoundError(f"photo {msg_id} not found")
+    data = await client.download_media(msg, file=bytes)
+    yield data
+
+
+async def get_photo_info(msg_id: int):
+    client = await get_client()
+    msg = await client.get_messages(TG_CHANNEL_ID, ids=msg_id)
+    if not msg or not msg.photo:
+        return None
+    return {"size": msg.photo.sizes[-1].size if msg.photo.sizes else 0}
+
+
+async def delete_photo(msg_id: int):
+    client = await get_client()
+    await client.delete_messages(TG_CHANNEL_ID, [msg_id])
+
