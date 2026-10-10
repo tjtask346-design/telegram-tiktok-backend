@@ -26,21 +26,18 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aim.earny.data.AppNotification
 import com.aim.earny.data.NotificationsRepository
-import com.aim.earny.data.formatCount
 import com.aim.earny.ui.components.SafeAvatar
 import com.aim.earny.ui.theme.*
 import kotlinx.coroutines.launch
 
 @Composable
-fun InboxScreen(
-    onOpenProfile: (String) -> Unit = {}
-) {
+fun InboxScreen(onOpenProfile: (String) -> Unit = {}) {
     val repo = remember { NotificationsRepository() }
     val scope = rememberCoroutineScope()
 
     var notifications by remember { mutableStateOf<List<AppNotification>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
-    var selected by remember { mutableStateOf(0) } // 0 = Activity, 1 = Messages
+    var selected by remember { mutableStateOf(0) }
 
     suspend fun reload() {
         loading = true
@@ -50,75 +47,47 @@ fun InboxScreen(
 
     LaunchedEffect(Unit) {
         reload()
-        // mark all read 1 sec after viewing
         kotlinx.coroutines.delay(1000)
         repo.markAllRead()
     }
 
     Column(Modifier.fillMaxSize().background(EarnyBlack).padding(top = 48.dp)) {
-
-        // Title + clear
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 20.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                "Inbox",
-                color = TextWhite, fontSize = 22.sp, fontWeight = FontWeight.Bold
-            )
+            Text("Inbox", color = TextWhite, fontSize = 22.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.weight(1f))
             if (notifications.isNotEmpty()) {
-                TextButton(
-                    onClick = {
-                        scope.launch {
-                            repo.clearAll()
-                            notifications = emptyList()
-                        }
+                TextButton(onClick = {
+                    scope.launch {
+                        repo.clearAll()
+                        notifications = emptyList()
                     }
-                ) {
+                }) {
                     Text("Clear all", color = TextWhite60, fontSize = 12.sp)
                 }
             }
         }
-
-        // Tabs
         Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
-            TabHeader(
-                "Activity",
-                selected == 0,
-                Modifier.weight(1f)
-            ) { selected = 0 }
-            TabHeader(
-                "Messages",
-                selected == 1,
-                Modifier.weight(1f)
-            ) { selected = 1 }
+            TabHeader("Activity", selected == 0, Modifier.weight(1f)) { selected = 0 }
+            TabHeader("Messages", selected == 1, Modifier.weight(1f)) { selected = 1 }
         }
-
         Box(Modifier.fillMaxSize()) {
             when {
-                loading -> Box(
-                    Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) { CircularProgressIndicator(color = Gold) }
-
+                loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = Gold)
+                }
                 selected == 0 -> {
                     if (notifications.isEmpty()) {
-                        EmptyState(
-                            icon = Icons.Filled.Notifications,
-                            title = "No activity yet",
-                            sub = "Likes, comments and follows\nwill appear here"
-                        )
+                        EmptyState(Icons.Filled.Notifications, "No activity yet",
+                            "Likes, comments and follows\nwill appear here")
                     } else {
                         LazyColumn(Modifier.fillMaxSize()) {
                             items(notifications) { n ->
                                 NotificationRow(
                                     n = n,
-                                    onClick = {
-                                        if (n.senderUid.isNotBlank()) {
-                                            onOpenProfile(n.senderUid)
-                                        }
-                                    },
+                                    onClick = { if (n.senderUid.isNotBlank()) onOpenProfile(n.senderUid) },
                                     onLongPress = {
                                         scope.launch {
                                             repo.deleteNotification(n.id)
@@ -130,24 +99,15 @@ fun InboxScreen(
                         }
                     }
                 }
-
-                else -> EmptyState(
-                    icon = Icons.Filled.Email,
-                    title = "Messages",
-                    sub = "Direct messages coming soon"
-                )
+                else -> EmptyState(Icons.Filled.Email, "Messages",
+                    "Direct messages coming soon")
             }
         }
     }
 }
 
 @Composable
-private fun TabHeader(
-    label: String,
-    selected: Boolean,
-    modifier: Modifier,
-    onClick: () -> Unit
-) {
+private fun TabHeader(label: String, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
     Column(
         modifier.clickable(
             interactionSource = remember { MutableInteractionSource() },
@@ -155,26 +115,18 @@ private fun TabHeader(
         ),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(
-            label,
+        Text(label,
             color = if (selected) TextWhite else TextWhite60,
             fontSize = 15.sp,
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
-        )
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
         Spacer(Modifier.height(6.dp))
-        Box(
-            Modifier.width(if (selected) 32.dp else 0.dp).height(2.dp)
-                .background(if (selected) TextWhite else Color.Transparent)
-        )
+        Box(Modifier.width(if (selected) 32.dp else 0.dp).height(2.dp)
+            .background(if (selected) TextWhite else Color.Transparent))
     }
 }
 
 @Composable
-private fun NotificationRow(
-    n: AppNotification,
-    onClick: () -> Unit,
-    onLongPress: () -> Unit
-) {
+private fun NotificationRow(n: AppNotification, onClick: () -> Unit, onLongPress: () -> Unit) {
     val iconVec = when (n.kind) {
         "like" -> Icons.Filled.Favorite
         "comment" -> Icons.Filled.ChatBubble
@@ -187,7 +139,6 @@ private fun NotificationRow(
         "follow" -> Gold
         else -> TextWhite60
     }
-
     Row(
         Modifier.fillMaxWidth()
             .background(if (n.unread) Gold.copy(alpha = 0.05f) else Color.Transparent)
@@ -210,49 +161,31 @@ private fun NotificationRow(
         }
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
-            Text(
-                n.title.ifBlank { "Earny" },
-                color = TextWhite, fontSize = 14.sp, fontWeight = FontWeight.SemiBold
-            )
+            Text(n.title.ifBlank { "Earny" }, color = TextWhite, fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(2.dp))
-            Text(
-                n.body,
-                color = TextWhite60, fontSize = 12.sp,
-                maxLines = 2
-            )
+            Text(n.body, color = TextWhite60, fontSize = 12.sp, maxLines = 2)
         }
-        if (n.unread) {
-            Box(
-                Modifier.size(8.dp).clip(CircleShape).background(Gold)
-            )
-        }
+        if (n.unread) Box(Modifier.size(8.dp).clip(CircleShape).background(Gold))
     }
 }
 
 @Composable
 private fun EmptyState(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
-    title: String,
-    sub: String
+    title: String, sub: String
 ) {
-    Column(
-        Modifier.fillMaxSize().padding(32.dp),
+    Column(Modifier.fillMaxSize().padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Box(
-            Modifier.size(88.dp).clip(CircleShape)
-                .background(Gold.copy(alpha = 0.12f)),
-            contentAlignment = Alignment.Center
-        ) {
+        verticalArrangement = Arrangement.Center) {
+        Box(Modifier.size(88.dp).clip(CircleShape).background(Gold.copy(alpha = 0.12f)),
+            contentAlignment = Alignment.Center) {
             Icon(icon, null, tint = Gold, modifier = Modifier.size(44.dp))
         }
         Spacer(Modifier.height(20.dp))
         Text(title, color = TextWhite, fontSize = 18.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
-        Text(
-            sub, color = TextWhite60, fontSize = 13.sp, lineHeight = 19.sp,
-            textAlign = TextAlign.Center
-        )
+        Text(sub, color = TextWhite60, fontSize = 13.sp, lineHeight = 19.sp,
+            textAlign = TextAlign.Center)
     }
 }
