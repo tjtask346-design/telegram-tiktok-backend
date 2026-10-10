@@ -126,17 +126,15 @@ async def upload(
 
 @app.api_route("/stream/{msg_id}", methods=["GET", "HEAD"])
 async def stream(msg_id: int, request: Request):
-    """Streaming with minimum 512 KB response to avoid Cloudflare's
-    small-range 502. ExoPlayer and Chrome tolerate this."""
+    """Clean streaming directly from Telegram. No caching, no tricks."""
     info = await get_video_info(msg_id)
     if not info:
         raise HTTPException(404, "Video not found")
 
     size = info["size"]
     mime = info["mime"]
-    MIN_RESPONSE = 512 * 1024  # 512 KB — Cloudflare threshold
 
-    # HEAD
+    # HEAD — headers only
     if request.method == "HEAD":
         return Response(
             content=b"",
@@ -150,62 +148,54 @@ async def stream(msg_id: int, request: Request):
 
     range_header = request.headers.get("range")
 
-    # No Range header → serve from 0
-    if not range_header:
-        start = 0
-        end = min(size - 1, MIN_RESPONSE - 1)
-        log.info(f"/stream/{msg_id} no-range, serving 0-{end}")
-        async def gen0():
-            async for chunk in stream_video(msg_id, offset=start, limit=end - start + 1):
+    # Range request → 206 Partial Content
+    if range_header:
+        try:
+            rng = range_header.replace("bytes=", "").split("-")
+            start = int(rng[0]) if rng[0] else 0
+            end = int(rng[1]) if len(rng) > 1 and rng[1] else size - 1
+        except Exception:
+            raise HTTPException(416, "Bad range")
+
+        if start >= size:
+            raise HTTPException(416, "Out of bounds")
+        if end >= size:
+            end = size - 1
+        if start > end:
+            raise HTTPException(416, "Bad range")
+
+        length = end - start + 1
+        log.info(f"/stream/{msg_id} serving range {start}-{end} ({length} bytes)")
+
+        async def gen_range():
+            async for chunk in stream_video(msg_id, offset=start, limit=length):
                 yield chunk
+
         return StreamingResponse(
-            gen0(),
+            gen_range(),
             status_code=206,
             media_type=mime,
             headers={
                 "Content-Range": f"bytes {start}-{end}/{size}",
                 "Accept-Ranges": "bytes",
-                "Content-Length": str(end - start + 1),
+                "Content-Length": str(length),
                 "Cache-Control": "public, max-age=86400",
             },
         )
 
-    # Parse Range
-    try:
-        rng = range_header.replace("bytes=", "").split("-")
-        start = int(rng[0]) if rng[0] else 0
-        end = int(rng[1]) if len(rng) > 1 and rng[1] else size - 1
-    except Exception:
-        raise HTTPException(416, "Bad range")
+    # No Range header → 200 OK full stream
+    log.info(f"/stream/{msg_id} serving full {size} bytes")
 
-    if start >= size:
-        raise HTTPException(416, "Out of bounds")
-    if end >= size:
-        end = size - 1
-    if start > end:
-        raise HTTPException(416, "Bad range")
-
-    # Pad small responses to MIN_RESPONSE (Cloudflare threshold)
-    requested = end - start + 1
-    if requested < MIN_RESPONSE:
-        end = min(start + MIN_RESPONSE - 1, size - 1)
-        log.info(f"/stream/{msg_id} padded {requested} → {end - start + 1}")
-
-    length = end - start + 1
-    log.info(f"/stream/{msg_id} serving {start}-{end} ({length} bytes)")
-
-    async def gen():
-        async for chunk in stream_video(msg_id, offset=start, limit=length):
+    async def gen_full():
+        async for chunk in stream_video(msg_id, offset=0):
             yield chunk
 
     return StreamingResponse(
-        gen(),
-        status_code=206,
+        gen_full(),
         media_type=mime,
         headers={
-            "Content-Range": f"bytes {start}-{end}/{size}",
             "Accept-Ranges": "bytes",
-            "Content-Length": str(length),
+            "Content-Length": str(size),
             "Cache-Control": "public, max-age=86400",
         },
     )
