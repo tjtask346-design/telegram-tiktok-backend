@@ -56,11 +56,16 @@ import com.aim.earny.vm.FeedViewModel
 @UnstableApi
 private fun buildCloudflareSafeDataSourceFactory(context: Context): DataSource.Factory {
     val baseFactory = DefaultDataSource.Factory(context)
-    return ResolvingDataSource.Factory(baseFactory) { dataSpec ->
-        // Rewrite: any request → open-ended from its position
-        // "bytes=1000-2000" becomes "bytes=1000-"
-        dataSpec.withLength(C.LENGTH_UNSET)
+    // Anonymous object — SAM conversion with default methods can be flaky
+    val resolver = object : ResolvingDataSource.Resolver {
+        override fun resolveDataSpec(dataSpec: androidx.media3.datasource.DataSpec): androidx.media3.datasource.DataSpec {
+            // Keep same position, remove the length cap.
+            // Converts "Range: bytes=N-M" into "Range: bytes=N-"
+            // which Cloudflare accepts unconditionally.
+            return dataSpec.subrange(0, C.LENGTH_UNSET)
+        }
     }
+    return ResolvingDataSource.Factory(baseFactory, resolver)
 }
 
 @Composable
