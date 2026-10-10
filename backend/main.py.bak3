@@ -126,7 +126,8 @@ async def upload(
 
 @app.api_route("/stream/{msg_id}", methods=["GET", "HEAD"])
 async def stream(msg_id: int, request: Request):
-    """True Range streaming — no full buffer, no Telethon limit bug."""
+    """True Range streaming — no full buffer.
+    Each ExoPlayer Range request gets exactly what it asked for."""
     info = await get_video_info(msg_id)
     if not info:
         raise HTTPException(404, "Video not found")
@@ -134,7 +135,7 @@ async def stream(msg_id: int, request: Request):
     size = info["size"]
     mime = info["mime"]
 
-    # HEAD — headers only
+    # HEAD — no body
     if request.method == "HEAD":
         return Response(
             content=b"",
@@ -148,17 +149,17 @@ async def stream(msg_id: int, request: Request):
 
     range_header = request.headers.get("range")
 
-    # No Range header → serve first 5 MB max (browser-friendly)
+    # ---- No Range: return first 5 MB max (fast close for Cloudflare) ----
     if not range_header:
         cap = min(size, 5 * 1024 * 1024)
         log.info(f"/stream/{msg_id} no-range, sending first {cap} of {size}")
 
-        async def gen_norange():
-            async for chunk in stream_video_range(msg_id, 0, cap):
+        async def gen():
+            async for chunk in stream_video(msg_id, offset=0, limit=cap):
                 yield chunk
 
         return StreamingResponse(
-            gen_norange(),
+            gen(),
             status_code=200,
             media_type=mime,
             headers={
@@ -168,7 +169,7 @@ async def stream(msg_id: int, request: Request):
             },
         )
 
-    # Parse Range: bytes=start-end
+    # ---- Parse Range: bytes=start-end ----
     try:
         rng = range_header.replace("bytes=", "").split("-")
         start = int(rng[0]) if rng[0] else 0
@@ -180,7 +181,8 @@ async def stream(msg_id: int, request: Request):
     if start >= size:
         raise HTTPException(416, f"Start {start} >= size {size}")
 
-    # Cap range length to 5 MB (Cloudflare-friendly, also saves bandwidth)
+    # Cap end so response finishes quickly (Cloudflare-friendly)
+    # If caller wanted huge chunk, limit to 5 MB
     requested = end - start + 1
     if requested > 5 * 1024 * 1024:
         end = start + (5 * 1024 * 1024) - 1
@@ -193,7 +195,7 @@ async def stream(msg_id: int, request: Request):
     log.info(f"/stream/{msg_id} serving {start}-{end} ({length} bytes of {size})")
 
     async def gen_range():
-        async for chunk in stream_video_range(msg_id, start, length):
+        async for chunk in stream_video(msg_id, offset=start, limit=length):
             yield chunk
 
     return StreamingResponse(
