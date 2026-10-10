@@ -2,6 +2,7 @@
 
 package com.aim.earny.ui.screens.main
 
+import android.content.Context
 import android.widget.Toast
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -21,7 +22,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -52,7 +52,6 @@ fun FeedScreen(vm: FeedViewModel = viewModel()) {
     LaunchedEffect(Unit) { vm.load() }
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
-
         when {
             loading && videos.isEmpty() -> Box(
                 Modifier.fillMaxSize(), contentAlignment = Alignment.Center
@@ -91,8 +90,44 @@ fun FeedScreen(vm: FeedViewModel = viewModel()) {
 
             else -> {
                 val pager = rememberPagerState(pageCount = { videos.size })
-                VerticalPager(state = pager, modifier = Modifier.fillMaxSize()) { page ->
-                    VideoPage(videos[page])
+                val currentIndex = pager.currentPage
+                val ctx = LocalContext.current
+
+                // ---- SINGLE ExoPlayer for entire feed ----
+                val exo = remember {
+                    ExoPlayer.Builder(ctx).build().apply {
+                        repeatMode = ExoPlayer.REPEAT_MODE_ONE
+                        playWhenReady = true
+                    }
+                }
+
+                DisposableEffect(Unit) {
+                    onDispose { exo.release() }
+                }
+
+                // ---- Swap media when page changes ----
+                LaunchedEffect(currentIndex, videos.size) {
+                    if (videos.isNotEmpty() && currentIndex in videos.indices) {
+                        val v = videos[currentIndex]
+                        if (v.telegramMsgId > 0) {
+                            val url = BuildConfig.API_BASE.trimEnd('/') + "/stream/" + v.telegramMsgId
+                            exo.setMediaItem(MediaItem.fromUri(url))
+                            exo.prepare()
+                            exo.play()
+                        }
+                    }
+                }
+
+                VerticalPager(
+                    state = pager,
+                    modifier = Modifier.fillMaxSize(),
+                    beyondViewportPageCount = 1
+                ) { page ->
+                    VideoPage(
+                        video = videos[page],
+                        isCurrentPage = page == currentIndex,
+                        exo = exo
+                    )
                 }
             }
         }
@@ -138,51 +173,21 @@ private fun Tab(text: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun VideoPage(video: Video) {
+private fun VideoPage(
+    video: Video,
+    isCurrentPage: Boolean,
+    exo: ExoPlayer
+) {
     var liked by remember { mutableStateOf(false) }
     var following by remember { mutableStateOf(false) }
     var burstKey by remember { mutableStateOf(0) }
-    var playbackError by remember { mutableStateOf<String?>(null) }
-    var isPlaying by remember { mutableStateOf(false) }
     val ctx = LocalContext.current
 
-    // ---- ExoPlayer setup with error listener ----
-    val exo = remember {
-        ExoPlayer.Builder(ctx).build().apply {
-            repeatMode = ExoPlayer.REPEAT_MODE_ONE
-            playWhenReady = true
-            addListener(object : Player.Listener {
-                override fun onPlaybackStateChanged(state: Int) {
-                    isPlaying = state == Player.STATE_READY
-                    if (state == Player.STATE_ENDED) playbackError = null
-                }
-                override fun onPlayerError(err: PlaybackException) {
-                    playbackError = err.errorCodeName + ": " + (err.message ?: "unknown")
-                }
-            })
-        }
-    }
-
-    val streamUrl = remember(video.telegramMsgId) {
-        if (video.telegramMsgId > 0)
-            BuildConfig.API_BASE.trimEnd('/') + "/stream/" + video.telegramMsgId
-        else null
-    }
-
-    LaunchedEffect(video.id) {
-        playbackError = null
-        if (streamUrl != null) {
-            exo.setMediaItem(MediaItem.fromUri(streamUrl))
-            exo.prepare()
-            exo.play()
-        }
-    }
-
-    DisposableEffect(Unit) { onDispose { exo.release() } }
-
+    // If not current page, don't show PlayerView (avoids multiple surfaces)
     Box(
         Modifier.fillMaxSize().background(Color.Black)
-            .pointerInput(Unit) {
+            .pointerInput(video.id, isCurrentPage) {
+                if (!isCurrentPage) return@pointerInput
                 detectTapGestures(
                     onDoubleTap = {
                         if (!liked) liked = true
@@ -194,8 +199,8 @@ private fun VideoPage(video: Video) {
                 )
             }
     ) {
-        // ---- Video surface OR fallback ----
-        if (streamUrl != null) {
+        // Only the current page shows the PlayerView
+        if (isCurrentPage) {
             AndroidView(
                 factory = {
                     PlayerView(it).apply {
@@ -207,72 +212,9 @@ private fun VideoPage(video: Video) {
                 },
                 modifier = Modifier.fillMaxSize()
             )
-        } else {
-            // No telegram id → gradient placeholder
-            Box(
-                Modifier.fillMaxSize().background(
-                    Brush.verticalGradient(
-                        listOf(GradPurplePink[0], GradPurplePink[1])
-                    )
-                ),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    "Video pending…",
-                    color = Color.White.copy(alpha = 0.7f), fontSize = 14.sp
-                )
-            }
         }
 
-        // ---- Error overlay ----
-        if (playbackError != null) {
-            Box(
-                Modifier.align(Alignment.Center)
-                    .background(Color.Black.copy(alpha = 0.7f), CircleShape)
-                    .padding(horizontal = 20.dp, vertical = 12.dp)
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        Icons.Filled.ErrorOutline, null,
-                        tint = HeartRed,
-                        modifier = Modifier.size(28.dp)
-                    )
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        "Playback failed",
-                        color = Color.White, fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        playbackError!!,
-                        color = TextWhite60, fontSize = 10.sp
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    Box(
-                        Modifier.background(Gold, CircleShape)
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null
-                            ) {
-                                playbackError = null
-                                exo.prepare()
-                                exo.play()
-                            }
-                            .padding(horizontal = 16.dp, vertical = 6.dp)
-                    ) {
-                        Text(
-                            "Retry",
-                            color = EarnyBlack,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-            }
-        }
-
-        // ---- Heart burst ----
+        // Heart burst
         key(burstKey) {
             if (burstKey > 0) {
                 var show by remember { mutableStateOf(true) }
@@ -294,7 +236,7 @@ private fun VideoPage(video: Video) {
             }
         }
 
-        // ---- Bottom info ----
+        // Bottom info
         Column(
             Modifier.align(Alignment.BottomStart)
                 .padding(start = 16.dp, bottom = 90.dp, end = 80.dp)
@@ -320,7 +262,7 @@ private fun VideoPage(video: Video) {
             }
         }
 
-        // ---- Right side actions ----
+        // Right side actions
         Column(
             Modifier.align(Alignment.BottomEnd).padding(end = 12.dp, bottom = 90.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
