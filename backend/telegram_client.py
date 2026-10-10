@@ -103,21 +103,28 @@ async def upload_photo(file_path: str, caption: str = "") -> int:
 
 
 async def stream_photo(msg_id: int):
-    """Yield photo bytes."""
+    """Stream photo or document bytes (whichever Telegram stored)."""
     client = await get_client()
     msg = await client.get_messages(TG_CHANNEL_ID, ids=msg_id)
-    if not msg or not msg.photo:
-        raise FileNotFoundError(f"photo {msg_id} not found")
-    data = await client.download_media(msg, file=bytes)
-    yield data
+    if not msg or not msg.media:
+        raise FileNotFoundError(f"media {msg_id} not found")
+    async for chunk in client.iter_download(msg.media, request_size=1024 * 256):
+        yield chunk
 
 
 async def get_photo_info(msg_id: int):
     client = await get_client()
     msg = await client.get_messages(TG_CHANNEL_ID, ids=msg_id)
-    if not msg or not msg.photo:
+    if not msg or not msg.media:
         return None
-    return {"size": msg.photo.sizes[-1].size if msg.photo.sizes else 0}
+    size = 0
+    mime = "image/jpeg"
+    if msg.photo and msg.photo.sizes:
+        size = msg.photo.sizes[-1].size
+    elif msg.document:
+        size = msg.document.size or 0
+        mime = msg.document.mime_type or "image/jpeg"
+    return {"size": size, "mime": mime}
 
 
 async def delete_photo(msg_id: int):

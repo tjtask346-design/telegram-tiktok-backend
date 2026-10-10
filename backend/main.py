@@ -373,14 +373,19 @@ async def get_profile_pic(msg_id: int):
         info = await get_photo_info(msg_id)
         if not info:
             raise HTTPException(404, "Not found")
-        chunks = []
-        async for chunk in stream_photo(msg_id):
-            chunks.append(chunk)
-        data = b"".join(chunks)
-        return Response(
-            content=data,
-            media_type="image/jpeg",
-            headers={"Cache-Control": "public, max-age=604800"},
+        mime = info.get("mime", "image/jpeg")
+
+        async def gen():
+            async for chunk in stream_photo(msg_id):
+                yield chunk
+
+        return StreamingResponse(
+            gen(),
+            media_type=mime,
+            headers={
+                "Cache-Control": "public, max-age=604800",
+                "X-Content-Type-Options": "nosniff",
+            },
         )
     except HTTPException:
         raise
