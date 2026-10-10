@@ -1,4 +1,5 @@
 import os
+import os
 import logging
 import tempfile
 import aiofiles
@@ -126,17 +127,14 @@ async def upload(
 
 @app.api_route("/stream/{msg_id}", methods=["GET", "HEAD"])
 async def stream(msg_id: int, request: Request):
-    """Streaming with minimum 512 KB response to avoid Cloudflare's
-    small-range 502. ExoPlayer and Chrome tolerate this."""
+    """Cache + remux with faststart for streaming."""
     info = await get_video_info(msg_id)
     if not info:
         raise HTTPException(404, "Video not found")
 
     size = info["size"]
     mime = info["mime"]
-    MIN_RESPONSE = 512 * 1024  # 512 KB — Cloudflare threshold
 
-    # HEAD
     if request.method == "HEAD":
         return Response(
             content=b"",
@@ -148,64 +146,94 @@ async def stream(msg_id: int, request: Request):
             },
         )
 
+    # ---- Cache + remux ----
+    cache_dir = "/tmp/earny_cache"
+    os.makedirs(cache_dir, exist_ok=True)
+    cache_path = f"{cache_dir}/{msg_id}_fast.mp4"
+
+    if not os.path.exists(cache_path):
+        log.info(f"/stream/{msg_id} caching + remuxing")
+        tmp_raw = f"{cache_dir}/{msg_id}_raw.mp4"
+        try:
+            with open(tmp_raw, "wb") as fh:
+                async for ch in stream_video(msg_id, offset=0):
+                    fh.write(ch)
+            log.info(f"/stream/{msg_id} downloaded {os.path.getsize(tmp_raw)} bytes")
+
+            import subprocess
+            result = subprocess.run(
+                ["ffmpeg", "-y", "-i", tmp_raw,
+                 "-c", "copy", "-movflags", "+faststart",
+                 cache_path],
+                capture_output=True, timeout=120
+            )
+            if result.returncode != 0:
+                log.error(f"ffmpeg err: {result.stderr.decode()[:500]}")
+                os.rename(tmp_raw, cache_path)
+            else:
+                try: os.unlink(tmp_raw)
+                except: pass
+            log.info(f"/stream/{msg_id} cached {os.path.getsize(cache_path)} bytes")
+        except Exception as e:
+            log.error(f"/stream/{msg_id} failed: {e}")
+            try: os.unlink(tmp_raw)
+            except: pass
+            raise HTTPException(500, "Cache failed")
+
+    # ---- Serve from cache ----
+    actual_size = os.path.getsize(cache_path)
     range_header = request.headers.get("range")
 
-    # No Range header → serve from 0
     if not range_header:
-        start = 0
-        end = min(size - 1, MIN_RESPONSE - 1)
-        log.info(f"/stream/{msg_id} no-range, serving 0-{end}")
-        async def gen0():
-            async for chunk in stream_video(msg_id, offset=start, limit=end - start + 1):
-                yield chunk
-        return StreamingResponse(
-            gen0(),
-            status_code=206,
+        with open(cache_path, "rb") as fh:
+            data = fh.read()
+        return Response(
+            content=data,
             media_type=mime,
             headers={
-                "Content-Range": f"bytes {start}-{end}/{size}",
                 "Accept-Ranges": "bytes",
-                "Content-Length": str(end - start + 1),
+                "Content-Length": str(actual_size),
                 "Cache-Control": "public, max-age=86400",
             },
         )
 
-    # Parse Range
+    # Parse range (support suffix: bytes=-N)
     try:
-        rng = range_header.replace("bytes=", "").split("-")
-        start = int(rng[0]) if rng[0] else 0
-        end = int(rng[1]) if len(rng) > 1 and rng[1] else size - 1
+        r = range_header.replace("bytes=", "").strip()
+        if r.startswith("-"):
+            # Suffix: last N bytes
+            n = int(r[1:])
+            start = max(0, actual_size - n)
+            end = actual_size - 1
+        else:
+            parts = r.split("-")
+            start = int(parts[0]) if parts[0] else 0
+            end = int(parts[1]) if len(parts) > 1 and parts[1] else actual_size - 1
     except Exception:
         raise HTTPException(416, "Bad range")
 
-    if start >= size:
+    if start >= actual_size:
         raise HTTPException(416, "Out of bounds")
-    if end >= size:
-        end = size - 1
+    if end >= actual_size:
+        end = actual_size - 1
     if start > end:
         raise HTTPException(416, "Bad range")
 
-    # Pad small responses to MIN_RESPONSE (Cloudflare threshold)
-    requested = end - start + 1
-    if requested < MIN_RESPONSE:
-        end = min(start + MIN_RESPONSE - 1, size - 1)
-        log.info(f"/stream/{msg_id} padded {requested} → {end - start + 1}")
-
     length = end - start + 1
-    log.info(f"/stream/{msg_id} serving {start}-{end} ({length} bytes)")
+    log.info(f"/stream/{msg_id} {start}-{end} ({length}b)")
 
-    async def gen():
-        async for chunk in stream_video(msg_id, offset=start, limit=length):
-            yield chunk
+    with open(cache_path, "rb") as fh:
+        fh.seek(start)
+        data = fh.read(length)
 
-    return StreamingResponse(
-        gen(),
+    return Response(
+        content=data,
         status_code=206,
         media_type=mime,
         headers={
-            "Content-Range": f"bytes {start}-{end}/{size}",
+            "Content-Range": f"bytes {start}-{end}/{actual_size}",
             "Accept-Ranges": "bytes",
-            "Content-Length": str(length),
+            "Content-Length": str(len(data)),
             "Cache-Control": "public, max-age=86400",
         },
     )

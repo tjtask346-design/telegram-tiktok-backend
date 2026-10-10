@@ -7,7 +7,7 @@ ENV PYTHONUNBUFFERED=1 \
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc libffi-dev curl \
+    gcc libffi-dev curl ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
