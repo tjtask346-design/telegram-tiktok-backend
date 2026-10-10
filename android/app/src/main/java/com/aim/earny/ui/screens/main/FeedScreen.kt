@@ -120,6 +120,17 @@ fun FeedScreen(
                 val currentIndex = pager.currentPage
                 val ctx = LocalContext.current
 
+                // Pagination trigger: when user is within 2 pages of end
+                LaunchedEffect(currentIndex, videos.size) {
+                    if (hasMore
+                        && !loadingMore
+                        && currentIndex >= videos.size - 2
+                        && videos.isNotEmpty()
+                    ) {
+                        vm.loadMore()
+                    }
+                }
+
                 val exo = remember {
                     ExoPlayer.Builder(ctx)
                         .build()

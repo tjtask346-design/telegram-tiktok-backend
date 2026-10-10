@@ -4,12 +4,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.aim.earny.BuildConfig
 import com.aim.earny.data.ApiService
-import com.aim.earny.data.DocumentMapper
 import com.aim.earny.data.BookmarkRepository
+import com.aim.earny.data.DocumentMapper
 import com.aim.earny.data.FollowRepository
 import com.aim.earny.data.Video
 import com.aim.earny.data.VideoRepository
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,63 +35,70 @@ class FeedViewModel : ViewModel() {
     private val followRepo = FollowRepository()
     private val bookmarkRepo = BookmarkRepository()
 
+    private val PAGE_SIZE = 10L
+
     private val _videos = MutableStateFlow<List<Video>>(emptyList())
     val videos = _videos.asStateFlow()
 
     private val _loading = MutableStateFlow(true)
     val loading = _loading.asStateFlow()
 
+    private val _loadingMore = MutableStateFlow(false)
+    val loadingMore = _loadingMore.asStateFlow()
+
+    private val _hasMore = MutableStateFlow(true)
+    val hasMore = _hasMore.asStateFlow()
+
     private val _error = MutableStateFlow<String?>(null)
     val error = _error.asStateFlow()
 
-    /** IDs of videos I've liked */
     private val _likedIds = MutableStateFlow<Set<String>>(emptySet())
     val likedIds = _likedIds.asStateFlow()
 
-    /** Video IDs I've bookmarked */
-    private val _bookmarkedIds = MutableStateFlow<Set<String>>(emptySet())
-    val bookmarkedIds = _bookmarkedIds.asStateFlow()
-
-    /** UIDs I'm currently following */
     private val _followingIds = MutableStateFlow<Set<String>>(emptySet())
     val followingIds = _followingIds.asStateFlow()
 
-    /** Video IDs we've already counted a view for this session */
+    private val _bookmarkedIds = MutableStateFlow<Set<String>>(emptySet())
+    val bookmarkedIds = _bookmarkedIds.asStateFlow()
+
+    private var lastDoc: DocumentSnapshot? = null
     private val viewedIds = mutableSetOf<String>()
 
     init { load() }
 
+    /** Fresh load from top — resets pagination */
     fun load() {
         viewModelScope.launch {
             _loading.value = true
             _error.value = null
+            _hasMore.value = true
+            lastDoc = null
+
             try {
-                // Load videos
+                // Videos — page 1
                 val snap = db.collection("videos")
                     .orderBy("createdAt", Query.Direction.DESCENDING)
-                    .limit(50)
+                    .limit(PAGE_SIZE)
                     .get()
                     .await()
                 _videos.value = snap.documents.map { DocumentMapper.video(it) }
+                lastDoc = snap.documents.lastOrNull()
+                _hasMore.value = snap.size() >= PAGE_SIZE
 
-                // Load my bookmarks
-                val meB = auth.currentUser?.uid
-                if (meB != null) {
-                    val bSnap = db.collection("users").document(meB)
-                        .collection("bookmarks").get().await()
-                    _bookmarkedIds.value = bSnap.documents.map { it.id }.toSet()
-                }
-
-                // Load my follows (for the +/✓ toggle + "Following" tab)
+                // Load my bookmarks + follows
                 val me = auth.currentUser?.uid
                 if (me != null) {
-                    val followsSnap = db.collection("follows")
-                        .whereEqualTo("follower", me)
-                        .get()
-                        .await()
-                    _followingIds.value = followsSnap.documents
-                        .mapNotNull { it.getString("followee") }
-                        .toSet()
+                    runCatching {
+                        val bSnap = db.collection("users").document(me)
+                            .collection("bookmarks").get().await()
+                        _bookmarkedIds.value = bSnap.documents.map { it.id }.toSet()
+                    }
+                    runCatching {
+                        val fSnap = db.collection("follows")
+                            .whereEqualTo("follower", me).get().await()
+                        _followingIds.value = fSnap.documents
+                            .mapNotNull { it.getString("followee") }.toSet()
+                    }
                 }
             } catch (e: Exception) {
                 _error.value = e.message ?: "Failed to load feed"
@@ -100,13 +108,42 @@ class FeedViewModel : ViewModel() {
         }
     }
 
+    /** Load the next page — called when user nears the end of the feed */
+    fun loadMore() {
+        if (_loadingMore.value || !_hasMore.value) return
+        val anchor = lastDoc ?: return
+
+        viewModelScope.launch {
+            _loadingMore.value = true
+            try {
+                val snap = db.collection("videos")
+                    .orderBy("createdAt", Query.Direction.DESCENDING)
+                    .startAfter(anchor)
+                    .limit(PAGE_SIZE)
+                    .get()
+                    .await()
+
+                val newVideos = snap.documents.map { DocumentMapper.video(it) }
+                // Dedupe just in case
+                val existingIds = _videos.value.map { it.id }.toSet()
+                val fresh = newVideos.filter { it.id !in existingIds }
+
+                _videos.value = _videos.value + fresh
+                lastDoc = snap.documents.lastOrNull() ?: anchor
+                _hasMore.value = snap.size() >= PAGE_SIZE
+            } catch (_: Exception) {
+                // Silent — UI stays on current page
+            } finally {
+                _loadingMore.value = false
+            }
+        }
+    }
+
     fun onPageVisible(video: Video) {
-        // Like state
         viewModelScope.launch {
             val liked = runCatching { videoRepo.hasLiked(video.id) }.getOrDefault(false)
             if (liked) _likedIds.value = _likedIds.value + video.id
         }
-        // View count
         if (viewedIds.add(video.id)) {
             viewModelScope.launch {
                 videoRepo.incrementView(video.id)
@@ -119,13 +156,13 @@ class FeedViewModel : ViewModel() {
 
     fun toggleLike(video: Video) {
         val wasLiked = _likedIds.value.contains(video.id)
-        val optimisticLiked = !wasLiked
+        val optimistic = !wasLiked
 
-        _likedIds.value = if (optimisticLiked)
+        _likedIds.value = if (optimistic)
             _likedIds.value + video.id else _likedIds.value - video.id
         _videos.value = _videos.value.map {
             if (it.id == video.id) {
-                it.copy(likes = (it.likes + if (optimisticLiked) 1 else -1).coerceAtLeast(0))
+                it.copy(likes = (it.likes + if (optimistic) 1 else -1).coerceAtLeast(0))
             } else it
         }
 
@@ -146,11 +183,9 @@ class FeedViewModel : ViewModel() {
         }
     }
 
-    /** Toggle follow of a video's uploader (persists to Firestore) */
     fun toggleFollow(uploaderUid: String) {
         val me = auth.currentUser?.uid ?: return
-        if (uploaderUid == me) return
-        if (uploaderUid.isBlank()) return
+        if (uploaderUid == me || uploaderUid.isBlank()) return
 
         val wasFollowing = _followingIds.value.contains(uploaderUid)
         val optimistic = !wasFollowing
@@ -164,19 +199,11 @@ class FeedViewModel : ViewModel() {
                 _followingIds.value = if (actual)
                     _followingIds.value + uploaderUid else _followingIds.value - uploaderUid
             } catch (_: Exception) {
-                // Revert
                 _followingIds.value = if (wasFollowing)
                     _followingIds.value + uploaderUid else _followingIds.value - uploaderUid
             }
         }
     }
-
-    /** Videos from users I follow only */
-    fun followingFeed(): List<Video> {
-        val following = _followingIds.value
-        return _videos.value.filter { following.contains(it.uploader) }
-    }
-
 
     fun toggleBookmark(video: Video) {
         val wasBookmarked = _bookmarkedIds.value.contains(video.id)
@@ -195,5 +222,10 @@ class FeedViewModel : ViewModel() {
                     _bookmarkedIds.value + video.id else _bookmarkedIds.value - video.id
             }
         }
+    }
+
+    fun followingFeed(): List<Video> {
+        val following = _followingIds.value
+        return _videos.value.filter { following.contains(it.uploader) }
     }
 }

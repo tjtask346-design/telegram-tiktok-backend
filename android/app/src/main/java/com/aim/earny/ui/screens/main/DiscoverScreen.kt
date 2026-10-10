@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
@@ -29,27 +30,52 @@ import com.aim.earny.data.UserProfile
 import com.aim.earny.data.formatCount
 import com.aim.earny.ui.theme.*
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
 @Composable
 fun DiscoverScreen(onOpenProfile: (String) -> Unit = {}) {
     val db = remember { FirebaseFirestore.getInstance() }
     val me = FirebaseAuth.getInstance().currentUser?.uid
+    val scope = rememberCoroutineScope()
 
     var users by remember { mutableStateOf<List<UserProfile>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
+    var loadingMore by remember { mutableStateOf(false) }
+    var hasMore by remember { mutableStateOf(true) }
+    var lastDoc by remember { mutableStateOf<DocumentSnapshot?>(null) }
 
-    LaunchedEffect(me) {
+    val PAGE_SIZE = 30L
+
+    suspend fun loadPage(reset: Boolean) {
+        if (reset) {
+            loading = true
+            users = emptyList()
+            lastDoc = null
+            hasMore = true
+        } else {
+            loadingMore = true
+        }
         runCatching {
-            val snap = db.collection("users").limit(100).get().await()
-            users = snap.documents
+            var q = db.collection("users")
+                .orderBy("followers", com.google.firebase.firestore.Query.Direction.DESCENDING)
+                .limit(PAGE_SIZE)
+            lastDoc?.let { q = q.startAfter(it) }
+            val snap = q.get().await()
+            val fresh = snap.documents
                 .map { DocumentMapper.user(it) }
                 .filter { it.uid != me }
-                .sortedByDescending { it.followers }
+            users = if (reset) fresh else users + fresh
+            lastDoc = snap.documents.lastOrNull() ?: lastDoc
+            hasMore = snap.size() >= PAGE_SIZE
         }
         loading = false
+        loadingMore = false
     }
+
+    LaunchedEffect(me) { loadPage(true) }
 
     Column(Modifier.fillMaxSize().background(EarnyBlack).padding(top = 48.dp)) {
         Text(
@@ -74,12 +100,34 @@ fun DiscoverScreen(onOpenProfile: (String) -> Unit = {}) {
 
             else -> LazyVerticalGrid(
                 columns = GridCells.Fixed(2),
-                contentPadding = PaddingValues(horizontal = 16.dp),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 items(users) { user ->
                     UserCard(user, onClick = { onOpenProfile(user.uid) })
+                }
+
+                // Loading indicator
+                if (loadingMore) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Box(
+                            Modifier.fillMaxWidth().padding(16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(color = Gold, modifier = Modifier.size(24.dp))
+                        }
+                    }
+                }
+
+                // Trigger load more when reaching end
+                if (hasMore && !loadingMore) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        LaunchedEffect(users.size) {
+                            loadPage(false)
+                        }
+                        Box(Modifier.height(1.dp))
+                    }
                 }
             }
         }
