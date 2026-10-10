@@ -76,3 +76,16 @@ data class SimpleResponse(
     val ok: Boolean = false,
     val reason: String = ""
 )
+
+
+data class AppNotification(
+    val id: String = "",
+    val kind: String = "",
+    val title: String = "",
+    val body: String = "",
+    val videoId: String = "",
+    val senderUid: String = "",
+    val senderName: String = "",
+    val unread: Boolean = false,
+    val createdAtMs: Long = 0L
+)

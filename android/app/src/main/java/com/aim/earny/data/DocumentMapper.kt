@@ -97,4 +97,16 @@ object DocumentMapper {
         createdAtMs = doc.timestampMs("createdAt"),
         isMine = doc.str("uid") == meUid
     )
+
+    fun notification(doc: DocumentSnapshot): AppNotification = AppNotification(
+        id = doc.id,
+        kind = doc.str("kind"),
+        title = doc.str("title"),
+        body = doc.str("body"),
+        videoId = doc.str("videoId"),
+        senderUid = doc.str("senderUid"),
+        senderName = doc.str("senderName"),
+        unread = doc.bool("unread"),
+        createdAtMs = doc.timestampMs("createdAt")
+    )
 }

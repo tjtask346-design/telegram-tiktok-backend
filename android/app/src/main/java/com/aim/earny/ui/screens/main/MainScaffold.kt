@@ -43,12 +43,11 @@ fun MainScaffold(onSignOut: () -> Unit) {
 
     LaunchedEffect(uid) {
         if (uid == null) return@LaunchedEffect
-        db.collection("messages")
-            .whereEqualTo("receiver", uid)
+        db.collection("users").document(uid)
+            .collection("notifications")
+            .whereEqualTo("unread", true)
             .addSnapshotListener { snap, _ ->
-                hasUnread = snap?.documents?.any {
-                    it.getBoolean("unread") == true
-                } ?: false
+                hasUnread = (snap?.size() ?: 0) > 0
             }
     }
 
@@ -64,7 +63,7 @@ fun MainScaffold(onSignOut: () -> Unit) {
                 )
             }
             composable("discover") { DiscoverScreen(onOpenProfile = { uid -> showOtherProfile = uid }) }
-            composable("inbox") { InboxScreen() }
+            composable("inbox") { InboxScreen(onOpenProfile = { uid -> showOtherProfile = uid }) }
             composable("profile") {
                 ProfileScreen(
                     onSignOut = onSignOut,

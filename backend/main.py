@@ -419,20 +419,38 @@ async def notify(
         token=token,
     )
 
+    # ---- 1. Write notification doc (always, even if FCM fails) ----
+    notif_ref = db.collection("users").document(payload.target_uid) \
+        .collection("notifications").document()
+    try:
+        notif_ref.set({
+            "kind": payload.kind,
+            "title": title,
+            "body": body,
+            "videoId": payload.video_id,
+            "senderUid": sender_uid,
+            "senderName": sender_name,
+            "unread": True,
+            "createdAt": firestore.SERVER_TIMESTAMP,
+        })
+    except Exception as e:
+        log.warning(f"notif doc write failed: {e}")
+
+    # ---- 2. Send FCM push ----
     try:
         messaging.send(message)
         log.info(f"notify sent to {payload.target_uid} ({payload.kind})")
         return {"ok": True}
     except Exception as e:
         log.warning(f"notify send failed: {e}")
-        # If token is stale, remove it
         try:
             db.collection("users").document(payload.target_uid).update(
                 {"fcmToken": firestore.DELETE_FIELD}
             )
         except Exception:
             pass
-        return {"ok": False, "reason": str(e)}
+        # Still return ok=True because the notif doc was saved
+        return {"ok": True, "fcm": False, "reason": str(e)}
 
 
 @app.post("/fcm-token")
