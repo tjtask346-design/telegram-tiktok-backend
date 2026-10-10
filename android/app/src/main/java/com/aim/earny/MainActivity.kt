@@ -10,16 +10,17 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import com.aim.earny.data.FcmRepository
 import com.aim.earny.navigation.EarnyNavGraph
 import com.aim.earny.navigation.Routes
+import com.aim.earny.notifications.NotificationHelper
 import com.aim.earny.ui.theme.EarnyBlack
 import com.aim.earny.ui.theme.EarnyTheme
 import com.aim.earny.ui.theme.Gold
-import com.aim.earny.data.FcmRepository
-import com.aim.earny.notifications.NotificationHelper
 import com.google.firebase.auth.FirebaseAuth
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -32,14 +33,16 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun RootApp() {
+    val ctx = LocalContext.current
     val auth = remember { FirebaseAuth.getInstance() }
     var ready by remember { mutableStateOf(false) }
     var startRoute by remember { mutableStateOf(Routes.SPLASH) }
 
     LaunchedEffect(Unit) {
         delay(150)
+
         // Ensure notification channel
-        NotificationHelper.ensureChannel(this@MainActivity)
+        runCatching { NotificationHelper.ensureChannel(ctx) }
 
         // Register FCM token if signed in
         if (auth.currentUser != null) {
@@ -48,13 +51,11 @@ fun RootApp() {
             }
         }
 
-        // CRITICAL: only use simple routes that match their pattern
-        // to avoid NavHost crash from resolved-route mismatch.
         startRoute = try {
             val u = auth.currentUser
             when {
                 u == null -> Routes.SPLASH
-                !u.isEmailVerified -> Routes.SPLASH  // will navigate to verify from splash
+                !u.isEmailVerified -> Routes.SPLASH
                 else -> Routes.MAIN
             }
         } catch (t: Throwable) {

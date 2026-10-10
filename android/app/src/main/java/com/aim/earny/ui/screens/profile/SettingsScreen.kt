@@ -6,8 +6,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -19,10 +22,26 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.compose.*
+import com.aim.earny.BuildConfig
+import com.aim.earny.data.ApiService
+import com.aim.earny.data.AuthRepository
+import com.aim.earny.data.BlockRepository
+import com.aim.earny.data.DocumentMapper
+import com.aim.earny.data.UserProfile
+import com.aim.earny.ui.components.SafeAvatar
 import com.aim.earny.ui.theme.*
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FieldPath
+import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
+import retrofit2.Retrofit
+import retrofit2.converter.gson.GsonConverterFactory
 
 @Composable
 fun SettingsScreen(
@@ -41,25 +60,16 @@ fun SettingsScreen(
                 onDelete = { nav.navigate("delete_account") }
             )
         }
-        composable("change_password") {
-            ChangePasswordScreen(onBack = { nav.popBackStack() })
-        }
-        composable("blocked_users") {
-            BlockedUsersScreen(onBack = { nav.popBackStack() })
-        }
+        composable("change_password") { ChangePasswordScreen(onBack = { nav.popBackStack() }) }
+        composable("blocked_users") { BlockedUsersScreen(onBack = { nav.popBackStack() }) }
         composable("delete_account") {
             DeleteAccountScreen(
                 onBack = { nav.popBackStack() },
-                onDeleted = {
-                    onSignOut()
-                    onClose()
-                }
+                onDeleted = { onSignOut(); onClose() }
             )
         }
     }
 }
-
-/* ═══════════════════ MAIN ═══════════════════ */
 
 @Composable
 private fun SettingsMain(
@@ -70,41 +80,27 @@ private fun SettingsMain(
     onDelete: () -> Unit
 ) {
     Column(Modifier.fillMaxSize().background(EarnyBlack)) {
-        SettingsTopBar(title = "Settings", onBack = onClose)
-
+        SettingsTopBar("Settings", onClose)
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(20.dp)) {
-
             SectionLabel("ACCOUNT")
-            SettingsRow(
-                Icons.Filled.Lock, "Change password",
-                "Update your login password"
-            ) { onPassword() }
-
-            SettingsRow(
-                Icons.Filled.Block, "Blocked users",
-                "Manage who you've blocked"
-            ) { onBlocked() }
+            SettingsRow(Icons.Filled.Lock, "Change password", "Update your login password", onClick = onPassword)
+            SettingsRow(Icons.Filled.Block, "Blocked users", "Manage who you've blocked", onClick = onBlocked)
 
             Spacer(Modifier.height(20.dp))
-
             SectionLabel("DANGER ZONE")
             SettingsRow(
                 Icons.Filled.DeleteForever, "Delete account",
                 "Permanently remove your account and data",
-                danger = true
-            ) { onDelete() }
+                danger = true, onClick = onDelete
+            )
 
             Spacer(Modifier.height(20.dp))
-
             SectionLabel("SESSION")
-            SettingsRow(
-                Icons.Filled.Logout, "Log out",
-                "Sign out of this device"
-            ) { onSignOut() }
+            SettingsRow(Icons.Filled.Logout, "Log out", "Sign out of this device", onClick = onSignOut)
 
             Spacer(Modifier.height(40.dp))
             Text(
-                "Earny v2.9 (build 11)",
+                "Earny v3.5 (build 17)",
                 color = TextWhite40, fontSize = 11.sp,
                 modifier = Modifier.align(Alignment.CenterHorizontally)
             )
@@ -115,11 +111,8 @@ private fun SettingsMain(
 @Composable
 private fun SectionLabel(text: String) {
     Text(
-        text,
-        color = TextWhite40,
-        fontSize = 11.sp,
-        fontWeight = FontWeight.ExtraBold,
-        letterSpacing = 0.8.sp,
+        text, color = TextWhite40, fontSize = 11.sp,
+        fontWeight = FontWeight.ExtraBold, letterSpacing = 0.8.sp,
         modifier = Modifier.padding(vertical = 10.dp, horizontal = 4.dp)
     )
 }
@@ -145,8 +138,7 @@ private fun SettingsRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
-            Modifier.size(40.dp).clip(RoundedCornerShape(12.dp))
-                .background(tint.copy(alpha = 0.1f)),
+            Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(tint.copy(alpha = 0.1f)),
             contentAlignment = Alignment.Center
         ) {
             Icon(icon, null, tint = tint, modifier = Modifier.size(20.dp))
@@ -163,10 +155,7 @@ private fun SettingsRow(
 
 @Composable
 private fun SettingsTopBar(title: String, onBack: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().padding(16.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
+    Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
         Icon(
             Icons.Filled.ArrowBack, "back",
             tint = TextWhite,
@@ -180,11 +169,9 @@ private fun SettingsTopBar(title: String, onBack: () -> Unit) {
     }
 }
 
-/* ═══════════════════ CHANGE PASSWORD ═══════════════════ */
-
 @Composable
 private fun ChangePasswordScreen(onBack: () -> Unit) {
-    val repo = remember { com.aim.earny.data.AuthRepository() }
+    val repo = remember { AuthRepository() }
     val scope = rememberCoroutineScope()
 
     var current by remember { mutableStateOf("") }
@@ -194,43 +181,44 @@ private fun ChangePasswordScreen(onBack: () -> Unit) {
     var error by remember { mutableStateOf<String?>(null) }
     var ok by remember { mutableStateOf(false) }
 
-    val canSubmit = !loading
-            && current.length >= 6
-            && newPw.length >= 6
-            && newPw == confirm
+    val canSubmit = !loading && current.length >= 6 && newPw.length >= 6 && newPw == confirm
 
     Column(Modifier.fillMaxSize().background(EarnyBlack)) {
-        SettingsTopBar(title = "Change password", onBack = onBack)
-
+        SettingsTopBar("Change password", onBack)
         Column(Modifier.padding(24.dp).verticalScroll(rememberScrollState())) {
             OutlinedTextField(
-                value = current, onValueChange = { current = it; error = null },
+                value = current,
+                onValueChange = { current = it; error = null },
                 label = { Text("Current password") },
                 singleLine = true,
-                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                modifier = Modifier.fillMaxWidth(),
-                colors = fieldColors()
-            )
-            Spacer(Modifier.height(12.dp))
-            OutlinedTextField(
-                value = newPw, onValueChange = { newPw = it; error = null },
-                label = { Text("New password (6+)") },
-                singleLine = true,
-                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                modifier = Modifier.fillMaxWidth(),
-                colors = fieldColors()
-            )
-            Spacer(Modifier.height(12.dp))
-            OutlinedTextField(
-                value = confirm, onValueChange = { confirm = it; error = null },
-                label = { Text("Confirm new password") },
-                singleLine = true,
-                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                visualTransformation = PasswordVisualTransformation(),
                 modifier = Modifier.fillMaxWidth(),
                 colors = fieldColors(),
-                isError = confirm.isNotBlank() && confirm != newPw
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
             )
-
+            Spacer(Modifier.height(12.dp))
+            OutlinedTextField(
+                value = newPw,
+                onValueChange = { newPw = it; error = null },
+                label = { Text("New password (6+)") },
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                modifier = Modifier.fillMaxWidth(),
+                colors = fieldColors(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
+            )
+            Spacer(Modifier.height(12.dp))
+            OutlinedTextField(
+                value = confirm,
+                onValueChange = { confirm = it; error = null },
+                label = { Text("Confirm new password") },
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                modifier = Modifier.fillMaxWidth(),
+                colors = fieldColors(),
+                isError = confirm.isNotBlank() && confirm != newPw,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
+            )
             if (error != null) {
                 Spacer(Modifier.height(12.dp))
                 Text(error!!, color = Color(0xFFE53935), fontSize = 13.sp)
@@ -239,9 +227,7 @@ private fun ChangePasswordScreen(onBack: () -> Unit) {
                 Spacer(Modifier.height(12.dp))
                 Text("Password updated ✓", color = Color(0xFF4CAF50), fontSize = 13.sp)
             }
-
             Spacer(Modifier.height(24.dp))
-
             Button(
                 enabled = canSubmit,
                 onClick = {
@@ -262,24 +248,20 @@ private fun ChangePasswordScreen(onBack: () -> Unit) {
             ) {
                 if (loading) CircularProgressIndicator(
                     color = EarnyBlack, modifier = Modifier.size(22.dp), strokeWidth = 2.dp
-                ) else Text(
-                    "Update password",
-                    color = EarnyBlack, fontWeight = FontWeight.Bold, fontSize = 16.sp
-                )
+                ) else Text("Update password", color = EarnyBlack, fontWeight = FontWeight.Bold, fontSize = 16.sp)
             }
         }
     }
 }
 
-/* ═══════════════════ BLOCKED USERS ═══════════════════ */
-
 @Composable
 private fun BlockedUsersScreen(onBack: () -> Unit) {
-    val db = remember { com.google.firebase.firestore.FirebaseFirestore.getInstance() }
-    val me = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid
+    val db = remember { FirebaseFirestore.getInstance() }
+    val me = FirebaseAuth.getInstance().currentUser?.uid
     val scope = rememberCoroutineScope()
+    val blockRepo = remember { BlockRepository() }
 
-    var users by remember { mutableStateOf<List<com.aim.earny.data.UserProfile>>(emptyList()) }
+    var users by remember { mutableStateOf<List<UserProfile>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
 
     suspend fun reload() {
@@ -287,13 +269,12 @@ private fun BlockedUsersScreen(onBack: () -> Unit) {
         runCatching {
             val blocks = db.collection("blocks").whereEqualTo("blocker", me ?: "").get().await()
             val uids = blocks.documents.mapNotNull { it.getString("blocked") }
-            val list = mutableListOf<com.aim.earny.data.UserProfile>()
+            val list = mutableListOf<UserProfile>()
             uids.chunked(10).forEach { chunk ->
                 if (chunk.isEmpty()) return@forEach
                 val snap = db.collection("users")
-                    .whereIn(com.google.firebase.firestore.FieldPath.documentId(), chunk)
-                    .get().await()
-                list += snap.documents.map { com.aim.earny.data.DocumentMapper.user(it) }
+                    .whereIn(FieldPath.documentId(), chunk).get().await()
+                list += snap.documents.map { DocumentMapper.user(it) }
             }
             users = list
         }
@@ -303,7 +284,7 @@ private fun BlockedUsersScreen(onBack: () -> Unit) {
     LaunchedEffect(me) { reload() }
 
     Column(Modifier.fillMaxSize().background(EarnyBlack)) {
-        SettingsTopBar(title = "Blocked users", onBack = onBack)
+        SettingsTopBar("Blocked users", onBack)
 
         if (loading) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -315,54 +296,47 @@ private fun BlockedUsersScreen(onBack: () -> Unit) {
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
-                Icon(Icons.Filled.Block, null, tint = Gold.copy(alpha = 0.6f),
-                    modifier = Modifier.size(56.dp))
+                Icon(Icons.Filled.Block, null, tint = Gold.copy(alpha = 0.6f), modifier = Modifier.size(56.dp))
                 Spacer(Modifier.height(16.dp))
-                Text("No blocked users", color = TextWhite, fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold)
+                Text("No blocked users", color = TextWhite, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(6.dp))
-                Text("Users you block will appear here",
-                    color = TextWhite60, fontSize = 13.sp)
+                Text("Users you block will appear here", color = TextWhite60, fontSize = 13.sp)
             }
         } else {
-            androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxSize()) {
-                androidx.compose.foundation.lazy.items(users) { u ->
+            LazyColumn(Modifier.fillMaxSize()) {
+                items(users) { u ->
                     Row(
                         Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        com.aim.earny.ui.components.SafeAvatar(
-                            name = u.username.ifBlank {
-                                u.fullName.ifBlank { u.email }
-                            },
+                        SafeAvatar(
+                            name = u.username.ifBlank { u.fullName.ifBlank { u.email } },
                             size = 48.dp,
                             picMsgId = u.profilePicMsgId
                         )
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
-                            Text("@" + u.username.ifBlank { u.fullName.ifBlank { "user" } },
-                                color = TextWhite, fontSize = 14.sp,
-                                fontWeight = FontWeight.SemiBold)
+                            Text(
+                                "@" + u.username.ifBlank { u.fullName.ifBlank { "user" } },
+                                color = TextWhite, fontSize = 14.sp, fontWeight = FontWeight.SemiBold
+                            )
                         }
                         Box(
-                            Modifier
-                                .clip(RoundedCornerShape(100.dp))
-                                .background(EarnySurface)
+                            Modifier.clip(RoundedCornerShape(100.dp)).background(EarnySurface)
                                 .clickable(
                                     interactionSource = remember { MutableInteractionSource() },
                                     indication = null
                                 ) {
                                     scope.launch {
                                         runCatching {
-                                            com.aim.earny.data.BlockRepository().toggle(u.uid)
+                                            blockRepo.toggle(u.uid)
                                             reload()
                                         }
                                     }
                                 }
                                 .padding(horizontal = 16.dp, vertical = 8.dp)
                         ) {
-                            Text("Unblock", color = Color(0xFFE53935),
-                                fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text("Unblock", color = Color(0xFFE53935), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -370,8 +344,6 @@ private fun BlockedUsersScreen(onBack: () -> Unit) {
         }
     }
 }
-
-/* ═══════════════════ DELETE ACCOUNT ═══════════════════ */
 
 @Composable
 private fun DeleteAccountScreen(onBack: () -> Unit, onDeleted: () -> Unit) {
@@ -381,30 +353,28 @@ private fun DeleteAccountScreen(onBack: () -> Unit, onDeleted: () -> Unit) {
     var error by remember { mutableStateOf<String?>(null) }
 
     val api = remember {
-        retrofit2.Retrofit.Builder()
-            .baseUrl(com.aim.earny.BuildConfig.API_BASE.trimEnd('/') + "/")
-            .addConverterFactory(retrofit2.converter.gson.GsonConverterFactory.create())
+        Retrofit.Builder()
+            .baseUrl(BuildConfig.API_BASE.trimEnd('/') + "/")
+            .addConverterFactory(GsonConverterFactory.create())
             .build()
-            .create(com.aim.earny.data.ApiService::class.java)
+            .create(ApiService::class.java)
     }
 
     Column(Modifier.fillMaxSize().background(EarnyBlack)) {
-        SettingsTopBar(title = "Delete account", onBack = onBack)
-
+        SettingsTopBar("Delete account", onBack)
         Column(Modifier.padding(24.dp)) {
             Box(
-                Modifier.fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
                     .background(Color(0xFFE53935).copy(alpha = 0.1f))
                     .padding(16.dp)
             ) {
                 Column {
-                    Icon(Icons.Filled.Warning, null, tint = Color(0xFFE53935),
-                        modifier = Modifier.size(28.dp))
+                    Icon(Icons.Filled.Warning, null, tint = Color(0xFFE53935), modifier = Modifier.size(28.dp))
                     Spacer(Modifier.height(10.dp))
-                    Text("This cannot be undone.",
-                        color = Color(0xFFE53935), fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold)
+                    Text(
+                        "This cannot be undone.",
+                        color = Color(0xFFE53935), fontSize = 15.sp, fontWeight = FontWeight.Bold
+                    )
                     Spacer(Modifier.height(8.dp))
                     Text(
                         "All your videos, comments, likes, followers, and account data will be permanently deleted.",
@@ -412,12 +382,9 @@ private fun DeleteAccountScreen(onBack: () -> Unit, onDeleted: () -> Unit) {
                     )
                 }
             }
-
             Spacer(Modifier.height(24.dp))
-            Text("Type DELETE to confirm:",
-                color = TextWhite, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+            Text("Type DELETE to confirm:", color = TextWhite, fontSize = 14.sp, fontWeight = FontWeight.Medium)
             Spacer(Modifier.height(10.dp))
-
             OutlinedTextField(
                 value = typed,
                 onValueChange = { typed = it.uppercase().take(10); error = null },
@@ -427,22 +394,18 @@ private fun DeleteAccountScreen(onBack: () -> Unit, onDeleted: () -> Unit) {
                 colors = fieldColors(),
                 isError = typed.isNotBlank() && typed != "DELETE"
             )
-
             if (error != null) {
                 Spacer(Modifier.height(12.dp))
                 Text(error!!, color = Color(0xFFE53935), fontSize = 13.sp)
             }
-
             Spacer(Modifier.height(24.dp))
-
             Button(
                 enabled = typed == "DELETE" && !loading,
                 onClick = {
                     scope.launch {
                         loading = true; error = null
                         try {
-                            com.aim.earny.data.AuthRepository()
-                                .deleteAccountViaBackend(api)
+                            AuthRepository().deleteAccountViaBackend(api)
                             onDeleted()
                         } catch (e: Exception) {
                             error = e.message ?: "Delete failed"
@@ -451,16 +414,11 @@ private fun DeleteAccountScreen(onBack: () -> Unit, onDeleted: () -> Unit) {
                 },
                 modifier = Modifier.fillMaxWidth().height(56.dp),
                 shape = RoundedCornerShape(100.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFFE53935)
-                )
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE53935))
             ) {
                 if (loading) CircularProgressIndicator(
                     color = Color.White, modifier = Modifier.size(22.dp), strokeWidth = 2.dp
-                ) else Text(
-                    "Delete my account",
-                    color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp
-                )
+                ) else Text("Delete my account", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
             }
         }
     }

@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalFoundationApi::class)
+@file:OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 
 package com.aim.earny.ui.screens.main
 
@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -26,6 +27,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -37,12 +39,17 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.aim.earny.BuildConfig
 import com.aim.earny.data.AppEvents
+import com.aim.earny.data.ReportRepository
 import com.aim.earny.data.Video
 import com.aim.earny.data.formatCount
 import com.aim.earny.ui.components.CommentsSheet
+import com.aim.earny.ui.components.HashtagCaption
 import com.aim.earny.ui.theme.*
 import com.aim.earny.vm.FeedViewModel
 import com.google.firebase.auth.FirebaseAuth
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 @Composable
 fun FeedScreen(
@@ -53,16 +60,18 @@ fun FeedScreen(
 ) {
     val allVideos by vm.videos.collectAsStateWithLifecycle()
     val loading by vm.loading.collectAsStateWithLifecycle()
+    val loadingMore by vm.loadingMore.collectAsStateWithLifecycle()
+    val hasMore by vm.hasMore.collectAsStateWithLifecycle()
     val error by vm.error.collectAsStateWithLifecycle()
     val likedIds by vm.likedIds.collectAsStateWithLifecycle()
     val followingIds by vm.followingIds.collectAsStateWithLifecycle()
     val bookmarkedIds by vm.bookmarkedIds.collectAsStateWithLifecycle()
     val blockedUids by vm.blockedUids.collectAsStateWithLifecycle()
 
-    var tab by remember { mutableStateOf(1) } // 0 = Following, 1 = For You
+    var tab by remember { mutableStateOf(1) }
     var commentsForVideo by remember { mutableStateOf<String?>(null) }
     var actionsForVideo by remember { mutableStateOf<Video?>(null) }
-    var reportDialog by remember { mutableStateOf<Pair<String, String>?>(null) } // kind to target
+    var reportDialogTarget by remember { mutableStateOf<Video?>(null) }
     var confirmBlock by remember { mutableStateOf<String?>(null) }
 
     val feedRefresh by AppEvents.feedRefresh.collectAsStateWithLifecycle()
@@ -70,7 +79,6 @@ fun FeedScreen(
 
     val myUid = FirebaseAuth.getInstance().currentUser?.uid
 
-    // Local filter for Following tab
     val videos = remember(tab, allVideos, followingIds, blockedUids, myUid) {
         val unblocked = allVideos.filter { !blockedUids.contains(it.uploader) }
         if (tab == 0) {
@@ -98,54 +106,25 @@ fun FeedScreen(
                 Button(onClick = { vm.load() }) { Text("Retry") }
             }
 
-            videos.isEmpty() -> Column(
-                Modifier.fillMaxSize(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                Icon(
-                    if (tab == 0) Icons.Filled.People else Icons.Filled.Videocam, null,
-                    tint = Gold.copy(alpha = 0.7f),
-                    modifier = Modifier.size(56.dp)
-                )
-                Spacer(Modifier.height(16.dp))
-                Text(
-                    if (tab == 0) "No followed creators yet" else "No videos yet",
-                    color = TextWhite, fontSize = 18.sp, fontWeight = FontWeight.Bold
-                )
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    if (tab == 0) "Follow creators to see their videos here"
-                    else "Tap the Earny Orb to post the first one",
-                    color = TextWhite60, fontSize = 13.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                )
-            }
+            videos.isEmpty() -> EmptyFeed(tab)
 
             else -> {
                 val pager = rememberPagerState(pageCount = { videos.size })
                 val currentIndex = pager.currentPage
                 val ctx = LocalContext.current
 
-                // Pagination trigger: when user is within 2 pages of end
                 LaunchedEffect(currentIndex, videos.size) {
-                    if (hasMore
-                        && !loadingMore
-                        && currentIndex >= videos.size - 2
-                        && videos.isNotEmpty()
-                    ) {
+                    if (hasMore && !loadingMore && currentIndex >= videos.size - 2 && videos.isNotEmpty()) {
                         vm.loadMore()
                     }
                 }
 
                 val exo = remember {
-                    ExoPlayer.Builder(ctx)
-                        .build()
-                        .apply {
-                            repeatMode = ExoPlayer.REPEAT_MODE_ONE
-                            playWhenReady = true
-                        }
+                    ExoPlayer.Builder(ctx).build().apply {
+                        repeatMode = ExoPlayer.REPEAT_MODE_ONE
+                        playWhenReady = true
+                    }
                 }
-
                 DisposableEffect(Unit) { onDispose { exo.release() } }
 
                 LaunchedEffect(currentIndex, videos.size) {
@@ -160,10 +139,7 @@ fun FeedScreen(
                     }
                 }
 
-                VerticalPager(
-                    state = pager,
-                    modifier = Modifier.fillMaxSize()
-                ) { page ->
+                VerticalPager(state = pager, modifier = Modifier.fillMaxSize()) { page ->
                     val v = videos[page]
                     VideoPage(
                         video = v,
@@ -192,9 +168,9 @@ fun FeedScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Spacer(Modifier.weight(1f))
-            Tab("Following", tab == 0) { tab = 0 }
+            FeedTab("Following", tab == 0) { tab = 0 }
             Spacer(Modifier.width(20.dp))
-            Tab("For You", tab == 1) { tab = 1 }
+            FeedTab("For You", tab == 1) { tab = 1 }
             Spacer(Modifier.weight(1f))
             Icon(
                 Icons.Filled.Search, "search",
@@ -208,39 +184,60 @@ fun FeedScreen(
     }
 
     commentsForVideo?.let { vid ->
-        CommentsSheet(
-            videoId = vid,
-            onDismiss = { commentsForVideo = null }
-        )
+        CommentsSheet(videoId = vid, onDismiss = { commentsForVideo = null })
     }
 
-    // ---- Long-press actions for other user's video ----
     actionsForVideo?.let { v ->
-        VideoActionsForOtherSheet(
-            video = v,
-            isBlocked = blockedUids.contains(v.uploader),
-            onDismiss = { actionsForVideo = null },
-            onReport = {
-                reportDialog = "video" to v.id
-                actionsForVideo = null
-            },
-            onBlock = {
-                confirmBlock = v.uploader
-                actionsForVideo = null
-            },
-            onOpenProfile = {
-                onOpenProfile(v.uploader)
-                actionsForVideo = null
+        ModalBottomSheet(
+            onDismissRequest = { actionsForVideo = null },
+            containerColor = EarnySurface,
+            dragHandle = { BottomSheetDefaults.DragHandle(color = TextWhite40) }
+        ) {
+            Column(Modifier.padding(bottom = 24.dp)) {
+                SheetRow(Icons.Filled.Person, "View profile") {
+                    onOpenProfile(v.uploader)
+                    actionsForVideo = null
+                }
+                SheetRow(Icons.Filled.Flag, "Report", Color(0xFFFF9800)) {
+                    reportDialogTarget = v
+                    actionsForVideo = null
+                }
+                SheetRow(
+                    Icons.Filled.Block,
+                    if (blockedUids.contains(v.uploader)) "Unblock user" else "Block user",
+                    Color(0xFFE53935)
+                ) {
+                    confirmBlock = v.uploader
+                    actionsForVideo = null
+                }
+            }
+        }
+    }
+
+    reportDialogTarget?.let { v ->
+        ReportDialog(
+            onDismiss = { reportDialogTarget = null },
+            onSubmit = { reason, note ->
+                CoroutineScope(Dispatchers.IO).launch {
+                    runCatching {
+                        ReportRepository().reportVideo(v.id, v.uploader, reason, note)
+                    }
+                }
+                reportDialogTarget = null
             }
         )
     }
 
-    // ---- Block confirm dialog ----
     confirmBlock?.let { uid ->
-        androidx.compose.material3.AlertDialog(
+        AlertDialog(
             onDismissRequest = { confirmBlock = null },
             containerColor = EarnySurface,
-            title = { Text(if (blockedUids.contains(uid)) "Unblock user?" else "Block user?", color = TextWhite) },
+            title = {
+                Text(
+                    if (blockedUids.contains(uid)) "Unblock user?" else "Block user?",
+                    color = TextWhite
+                )
+            },
             text = {
                 Text(
                     if (blockedUids.contains(uid))
@@ -257,8 +254,7 @@ fun FeedScreen(
                 }) {
                     Text(
                         if (blockedUids.contains(uid)) "Unblock" else "Block",
-                        color = Color(0xFFE53935),
-                        fontWeight = FontWeight.Bold
+                        color = Color(0xFFE53935), fontWeight = FontWeight.Bold
                     )
                 }
             },
@@ -269,57 +265,51 @@ fun FeedScreen(
             }
         )
     }
+}
 
-    // ---- Report dialog ----
-    reportDialog?.let { (kind, target) ->
-        ReportDialog(
-            onDismiss = { reportDialog = null },
-            onSubmit = { reason, note ->
-                // fire and forget
-                val v = videos.firstOrNull { it.id == target }
-                kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                    runCatching {
-                        if (kind == "video" && v != null) {
-                            com.aim.earny.data.ReportRepository()
-                                .reportVideo(v.id, v.uploader, reason, note)
-                        } else {
-                            com.aim.earny.data.ReportRepository()
-                                .reportUser(target, reason, note)
-                        }
-                    }
-                }
-                reportDialog = null
-            }
+@Composable
+private fun EmptyFeed(tab: Int) {
+    Column(
+        Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(
+            if (tab == 0) Icons.Filled.People else Icons.Filled.Videocam, null,
+            tint = Gold.copy(alpha = 0.7f), modifier = Modifier.size(56.dp)
+        )
+        Spacer(Modifier.height(16.dp))
+        Text(
+            if (tab == 0) "No followed creators yet" else "No videos yet",
+            color = TextWhite, fontSize = 18.sp, fontWeight = FontWeight.Bold
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            if (tab == 0) "Follow creators to see their videos here"
+            else "Tap the Earny Orb to post the first one",
+            color = TextWhite60, fontSize = 13.sp, textAlign = TextAlign.Center
         )
     }
 }
 
-@androidx.compose.material3.ExperimentalMaterial3Api
 @Composable
-private fun VideoActionsForOtherSheet(
-    video: Video,
-    isBlocked: Boolean,
-    onDismiss: () -> Unit,
-    onReport: () -> Unit,
-    onBlock: () -> Unit,
-    onOpenProfile: () -> Unit
-) {
-    androidx.compose.material3.ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        containerColor = EarnySurface,
-        dragHandle = {
-            androidx.compose.material3.BottomSheetDefaults.DragHandle(color = TextWhite40)
-        }
-    ) {
-        Column(Modifier.padding(bottom = 24.dp)) {
-            SheetRow(Icons.Filled.Person, "View profile") { onOpenProfile() }
-            SheetRow(Icons.Filled.Flag, "Report", Color(0xFFFF9800)) { onReport() }
-            SheetRow(
-                Icons.Filled.Block,
-                if (isBlocked) "Unblock user" else "Block user",
-                Color(0xFFE53935)
-            ) { onBlock() }
-        }
+private fun FeedTab(text: String, selected: Boolean, onClick: () -> Unit) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            text,
+            color = if (selected) Color.White else TextWhite60,
+            fontSize = 16.sp,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+            modifier = Modifier.clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null, onClick = onClick
+            )
+        )
+        Spacer(Modifier.height(4.dp))
+        Box(
+            Modifier.width(if (selected) 28.dp else 0.dp).height(2.dp)
+                .background(if (selected) Color.White else Color.Transparent)
+        )
     }
 }
 
@@ -350,23 +340,17 @@ private fun ReportDialog(
     onDismiss: () -> Unit,
     onSubmit: (reason: String, note: String) -> Unit
 ) {
-    val reasons = listOf(
-        "spam", "harassment", "nudity",
-        "violence", "hate_speech", "other"
-    )
+    val reasons = listOf("spam", "harassment", "nudity", "violence", "hate_speech", "other")
     var selected by remember { mutableStateOf(reasons.first()) }
     var note by remember { mutableStateOf("") }
 
-    androidx.compose.material3.AlertDialog(
+    AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = EarnySurface,
         title = { Text("Report", color = TextWhite, fontWeight = FontWeight.Bold) },
         text = {
             Column {
-                Text(
-                    "Why are you reporting?",
-                    color = TextWhite60, fontSize = 13.sp
-                )
+                Text("Why are you reporting?", color = TextWhite60, fontSize = 13.sp)
                 Spacer(Modifier.height(12.dp))
                 reasons.forEach { r ->
                     Row(
@@ -375,33 +359,30 @@ private fun ReportDialog(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null
                             ) { selected = r }
-                            .padding(vertical = 8.dp),
+                            .padding(vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        androidx.compose.material3.RadioButton(
+                        RadioButton(
                             selected = selected == r,
                             onClick = { selected = r },
-                            colors = androidx.compose.material3.RadioButtonDefaults
-                                .colors(
-                                    selectedColor = Gold,
-                                    unselectedColor = TextWhite40
-                                )
+                            colors = RadioButtonDefaults.colors(
+                                selectedColor = Gold, unselectedColor = TextWhite40
+                            )
                         )
-                        Spacer(Modifier.width(8.dp))
+                        Spacer(Modifier.width(4.dp))
                         Text(
                             r.replace("_", " ").replaceFirstChar { it.uppercase() },
-                            color = TextWhite,
-                            fontSize = 14.sp
+                            color = TextWhite, fontSize = 14.sp
                         )
                     }
                 }
                 Spacer(Modifier.height(8.dp))
-                androidx.compose.material3.OutlinedTextField(
+                OutlinedTextField(
                     value = note,
                     onValueChange = { if (it.length <= 200) note = it },
                     label = { Text("Note (optional)", color = TextWhite40) },
                     modifier = Modifier.fillMaxWidth().heightIn(min = 60.dp),
-                    colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                    colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = TextWhite,
                         unfocusedTextColor = TextWhite,
                         focusedBorderColor = Gold,
@@ -417,32 +398,9 @@ private fun ReportDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel", color = TextWhite)
-            }
+            TextButton(onClick = onDismiss) { Text("Cancel", color = TextWhite) }
         }
     )
-}
-
-@Composable
-private fun Tab(text: String, selected: Boolean, onClick: () -> Unit) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(
-            text,
-            color = if (selected) Color.White else TextWhite60,
-            fontSize = 16.sp,
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-            modifier = Modifier.clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null, onClick = onClick
-            )
-        )
-        Spacer(Modifier.height(4.dp))
-        Box(
-            Modifier.width(if (selected) 28.dp else 0.dp).height(2.dp)
-                .background(if (selected) Color.White else Color.Transparent)
-        )
-    }
 }
 
 @Composable
@@ -461,14 +419,12 @@ private fun VideoPage(
     onOpenProfile: () -> Unit,
     onOpenComments: () -> Unit,
     onLongPress: () -> Unit,
-    onOpenHashtag: (String) -> Unit = {}
+    onOpenHashtag: (String) -> Unit
 ) {
     var burstKey by remember { mutableStateOf(0) }
     val ctx = LocalContext.current
 
-    LaunchedEffect(isCurrentPage) {
-        if (isCurrentPage) onBecameVisible()
-    }
+    LaunchedEffect(isCurrentPage) { if (isCurrentPage) onBecameVisible() }
 
     Box(
         Modifier.fillMaxSize().background(Color.Black)
@@ -479,12 +435,8 @@ private fun VideoPage(
                         if (!isLiked) onToggleLike()
                         burstKey++
                     },
-                    onTap = {
-                        if (exo.isPlaying) exo.pause() else exo.play()
-                    },
-                    onLongPress = {
-                        if (!isMine) onLongPress()
-                    }
+                    onTap = { if (exo.isPlaying) exo.pause() else exo.play() },
+                    onLongPress = { if (!isMine) onLongPress() }
                 )
             }
     ) {
@@ -535,17 +487,14 @@ private fun VideoPage(
             Text(displayName, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
             if (video.caption.isNotBlank()) {
                 Spacer(Modifier.height(6.dp))
-                com.aim.earny.ui.components.HashtagCaption(
+                HashtagCaption(
                     caption = video.caption,
-                    onHashtag = { tag -> onOpenHashtag(tag) }
+                    onHashtag = onOpenHashtag
                 )
             }
             Spacer(Modifier.height(10.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    Icons.Filled.MusicNote, null,
-                    tint = Color.White, modifier = Modifier.size(14.dp)
-                )
+                Icon(Icons.Filled.MusicNote, null, tint = Color.White, modifier = Modifier.size(14.dp))
                 Spacer(Modifier.width(6.dp))
                 Text("Original sound - earny", color = Color.White, fontSize = 12.sp)
             }
@@ -561,20 +510,16 @@ private fun VideoPage(
                     Modifier.size(48.dp).clip(CircleShape).background(Gold)
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
-                            indication = null
-                        ) { onOpenProfile() },
+                            indication = null, onClick = onOpenProfile
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
                         video.uploaderHandle.firstOrNull()?.uppercase()
-                            ?: video.uploaderName.firstOrNull()?.uppercase()
-                            ?: "E",
-                        color = EarnyBlack,
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold
+                            ?: video.uploaderName.firstOrNull()?.uppercase() ?: "E",
+                        color = EarnyBlack, fontSize = 20.sp, fontWeight = FontWeight.Bold
                     )
                 }
-                // Hide follow badge on own videos
                 if (!isMine) {
                     Box(
                         Modifier.size(20.dp)
@@ -582,8 +527,8 @@ private fun VideoPage(
                             .align(Alignment.BottomCenter).offset(y = 8.dp)
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
-                                indication = null
-                            ) { onToggleFollow() },
+                                indication = null, onClick = onToggleFollow
+                            ),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
@@ -595,24 +540,22 @@ private fun VideoPage(
                 }
             }
 
-            ActionItem(
+            FeedActionItem(
                 icon = if (isLiked) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
                 count = formatCount(video.likes),
-                tint = if (isLiked) HeartRed else Color.White
-            ) { onToggleLike() }
-
-            ActionItem(Icons.Filled.ChatBubble, formatCount(video.comments)) { onOpenComments() }
-            ActionItem(
+                tint = if (isLiked) HeartRed else Color.White,
+                onClick = onToggleLike
+            )
+            FeedActionItem(Icons.Filled.ChatBubble, formatCount(video.comments), onClick = onOpenComments)
+            FeedActionItem(
                 icon = if (isBookmarked) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
                 count = if (isBookmarked) "Saved" else "Save",
-                tint = if (isBookmarked) Gold else Color.White
-            ) { onToggleBookmark() }
-            ActionItem(Icons.Filled.Share, formatCount(video.likes)) {
+                tint = if (isBookmarked) Gold else Color.White,
+                onClick = onToggleBookmark
+            )
+            FeedActionItem(Icons.Filled.Share, "Share") {
                 val url = BuildConfig.API_BASE.trimEnd('/') + "/stream/" + video.telegramMsgId
-                val text = if (video.caption.isNotBlank())
-                    "${video.caption}
-
-$url" else url
+                val text = if (video.caption.isNotBlank()) "${video.caption}\n\n$url" else url
                 val intent = Intent(Intent.ACTION_SEND).apply {
                     type = "text/plain"
                     putExtra(Intent.EXTRA_TEXT, text)
@@ -628,7 +571,7 @@ $url" else url
 }
 
 @Composable
-private fun ActionItem(
+private fun FeedActionItem(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     count: String,
     tint: Color = Color.White,

@@ -1,14 +1,8 @@
 package com.aim.earny.ui.screens.profile
 
-import android.content.Intent
-import retrofit2.converter.gson.GsonConverterFactory
-import retrofit2.Retrofit
-import com.aim.earny.data.ProfilePicRepository
-import com.aim.earny.data.ApiService
-import com.aim.earny.BuildConfig
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.activity.compose.rememberLauncherForActivityResult
 import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -24,8 +18,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -33,6 +25,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.aim.earny.BuildConfig
+import com.aim.earny.data.ApiService
+import com.aim.earny.data.ProfilePicRepository
 import com.aim.earny.ui.components.SafeAvatar
 import com.aim.earny.ui.theme.*
 import com.google.firebase.auth.FirebaseAuth
@@ -41,6 +36,8 @@ import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import retrofit2.Retrofit
+import retrofit2.converter.gson.GsonConverterFactory
 
 private enum class NameState { Idle, Checking, Available, Taken, Invalid }
 
@@ -52,8 +49,9 @@ fun EditProfileScreen(
     val auth = remember { FirebaseAuth.getInstance() }
     val db = remember { FirebaseFirestore.getInstance() }
     val scope = rememberCoroutineScope()
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val context = LocalContext.current
     val uid = auth.currentUser?.uid
+
     val picRepo = remember {
         val api = Retrofit.Builder()
             .baseUrl(BuildConfig.API_BASE.trimEnd('/') + "/")
@@ -62,6 +60,19 @@ fun EditProfileScreen(
             .create(ApiService::class.java)
         ProfilePicRepository(api)
     }
+
+    var firstName by remember { mutableStateOf("") }
+    var lastName by remember { mutableStateOf("") }
+    var username by remember { mutableStateOf("") }
+    var originalUsername by remember { mutableStateOf("") }
+    var bio by remember { mutableStateOf("") }
+    var link by remember { mutableStateOf("") }
+    var loading by remember { mutableStateOf(true) }
+    var saving by remember { mutableStateOf(false) }
+    var errorMsg by remember { mutableStateOf<String?>(null) }
+    var nameState by remember { mutableStateOf(NameState.Idle) }
+    var picMsgId by remember { mutableStateOf(0L) }
+    var uploadingPic by remember { mutableStateOf(false) }
 
     val picPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.GetContent()
@@ -81,20 +92,6 @@ fun EditProfileScreen(
         }
     }
 
-    var firstName by remember { mutableStateOf("") }
-    var lastName by remember { mutableStateOf("") }
-    var username by remember { mutableStateOf("") }
-    var originalUsername by remember { mutableStateOf("") }
-    var bio by remember { mutableStateOf("") }
-    var link by remember { mutableStateOf("") }
-    var loading by remember { mutableStateOf(true) }
-    var saving by remember { mutableStateOf(false) }
-    var errorMsg by remember { mutableStateOf<String?>(null) }
-    var nameState by remember { mutableStateOf(NameState.Idle) }
-    var picMsgId by remember { mutableStateOf(0L) }
-    var uploadingPic by remember { mutableStateOf(false) }
-
-    // Load existing — defensive
     LaunchedEffect(uid) {
         if (uid == null) { loading = false; return@LaunchedEffect }
         try {
@@ -112,7 +109,6 @@ fun EditProfileScreen(
         loading = false
     }
 
-    // Live username check (debounced)
     LaunchedEffect(username) {
         val clean = username.trim().lowercase()
         if (clean == originalUsername) { nameState = NameState.Idle; return@LaunchedEffect }
@@ -142,8 +138,6 @@ fun EditProfileScreen(
             && !saving
 
     Column(Modifier.fillMaxSize().background(EarnyBlack)) {
-
-        // Top bar
         Row(
             Modifier.fillMaxWidth().padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -157,10 +151,7 @@ fun EditProfileScreen(
                 )
             )
             Spacer(Modifier.width(16.dp))
-            Text(
-                "Edit profile",
-                color = TextWhite, fontSize = 18.sp, fontWeight = FontWeight.Bold
-            )
+            Text("Edit profile", color = TextWhite, fontSize = 18.sp, fontWeight = FontWeight.Bold)
         }
 
         if (loading) {
@@ -171,12 +162,10 @@ fun EditProfileScreen(
         }
 
         Column(
-            Modifier.weight(1f)
-                .verticalScroll(rememberScrollState())
+            Modifier.weight(1f).verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Profile pic row
             Box(contentAlignment = Alignment.BottomEnd) {
                 SafeAvatar(
                     name = username.ifBlank { firstName.ifBlank { "?" } },
@@ -184,28 +173,21 @@ fun EditProfileScreen(
                     picMsgId = picMsgId
                 )
                 Box(
-                    Modifier.size(32.dp)
-                        .background(Gold, CircleShape)
+                    Modifier.size(32.dp).background(Gold, CircleShape)
                         .clickable(
                             enabled = !uploadingPic,
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null
-                        ) {
-                            picPicker.launch("image/*")
-                        },
+                        ) { picPicker.launch("image/*") },
                     contentAlignment = Alignment.Center
                 ) {
                     if (uploadingPic) {
                         CircularProgressIndicator(
-                            color = EarnyBlack,
-                            strokeWidth = 2.dp,
+                            color = EarnyBlack, strokeWidth = 2.dp,
                             modifier = Modifier.size(16.dp)
                         )
                     } else {
-                        Icon(
-                            Icons.Filled.CameraAlt, null,
-                            tint = EarnyBlack, modifier = Modifier.size(18.dp)
-                        )
+                        Icon(Icons.Filled.CameraAlt, null, tint = EarnyBlack, modifier = Modifier.size(18.dp))
                     }
                 }
             }
@@ -218,11 +200,7 @@ fun EditProfileScreen(
 
             Spacer(Modifier.height(24.dp))
 
-            // First + Last name
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedTextField(
                     value = firstName,
                     onValueChange = { if (it.length <= 30) firstName = it },
@@ -243,7 +221,6 @@ fun EditProfileScreen(
 
             Spacer(Modifier.height(12.dp))
 
-            // Username
             OutlinedTextField(
                 value = username,
                 onValueChange = {
@@ -260,17 +237,14 @@ fun EditProfileScreen(
                 trailingIcon = {
                     when (nameState) {
                         NameState.Checking -> CircularProgressIndicator(
-                            color = Gold, strokeWidth = 2.dp,
-                            modifier = Modifier.size(18.dp)
+                            color = Gold, strokeWidth = 2.dp, modifier = Modifier.size(18.dp)
                         )
                         NameState.Available -> Icon(
-                            Icons.Filled.Check, null,
-                            tint = Color(0xFF4CAF50),
+                            Icons.Filled.Check, null, tint = Color(0xFF4CAF50),
                             modifier = Modifier.size(22.dp)
                         )
                         NameState.Taken -> Icon(
-                            Icons.Filled.Close, null,
-                            tint = Color(0xFFE53935),
+                            Icons.Filled.Close, null, tint = Color(0xFFE53935),
                             modifier = Modifier.size(22.dp)
                         )
                         else -> {}
@@ -292,7 +266,6 @@ fun EditProfileScreen(
 
             Spacer(Modifier.height(16.dp))
 
-            // Bio
             OutlinedTextField(
                 value = bio,
                 onValueChange = { if (it.length <= 80) bio = it },
@@ -308,7 +281,6 @@ fun EditProfileScreen(
 
             Spacer(Modifier.height(16.dp))
 
-            // Link
             OutlinedTextField(
                 value = link,
                 onValueChange = { if (it.length <= 120) link = it },
@@ -319,19 +291,13 @@ fun EditProfileScreen(
                 modifier = Modifier.fillMaxWidth(),
                 colors = fieldColors(),
                 leadingIcon = {
-                    Icon(
-                        Icons.Filled.Link, null,
-                        tint = Gold, modifier = Modifier.size(18.dp)
-                    )
+                    Icon(Icons.Filled.Link, null, tint = Gold, modifier = Modifier.size(18.dp))
                 }
             )
 
             if (errorMsg != null) {
                 Spacer(Modifier.height(12.dp))
-                Text(
-                    errorMsg!!, color = Color(0xFFE53935),
-                    fontSize = 13.sp, textAlign = TextAlign.Center
-                )
+                Text(errorMsg!!, color = Color(0xFFE53935), fontSize = 13.sp, textAlign = TextAlign.Center)
             }
 
             Spacer(Modifier.height(28.dp))
@@ -349,15 +315,11 @@ fun EditProfileScreen(
 
                             if (newClean != oldClean) {
                                 db.collection("usernames").document(newClean).set(
-                                    mapOf(
-                                        "uid" to uid,
-                                        "username" to username.trim()
-                                    )
+                                    mapOf("uid" to uid, "username" to username.trim())
                                 ).await()
                                 if (oldClean.isNotBlank()) {
                                     try {
-                                        db.collection("usernames")
-                                            .document(oldClean).delete().await()
+                                        db.collection("usernames").document(oldClean).delete().await()
                                     } catch (_: Exception) {}
                                 }
                             }
@@ -385,24 +347,14 @@ fun EditProfileScreen(
                 },
                 modifier = Modifier.fillMaxWidth().height(56.dp),
                 shape = RoundedCornerShape(100.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Gold,
-                    contentColor = EarnyBlack
-                )
+                colors = ButtonDefaults.buttonColors(containerColor = Gold)
             ) {
                 if (saving) {
                     CircularProgressIndicator(
-                        color = EarnyBlack,
-                        modifier = Modifier.size(22.dp),
-                        strokeWidth = 2.dp
+                        color = EarnyBlack, modifier = Modifier.size(22.dp), strokeWidth = 2.dp
                     )
                 } else {
-                    Text(
-                        "Save changes",
-                        color = EarnyBlack,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp
-                    )
+                    Text("Save changes", color = EarnyBlack, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 }
             }
 

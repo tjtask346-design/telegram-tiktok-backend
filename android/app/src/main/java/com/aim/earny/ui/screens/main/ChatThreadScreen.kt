@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -91,7 +92,7 @@ fun ChatThreadScreen(
             )
         }
 
-        Divider(color = EarnyBorder)
+        HorizontalHorizontalHorizontalDivider(color = EarnyBorder)
 
         // Messages
         Box(Modifier.weight(1f)) {
@@ -124,7 +125,7 @@ fun ChatThreadScreen(
             }
         }
 
-        Divider(color = EarnyBorder)
+        HorizontalHorizontalHorizontalDivider(color = EarnyBorder)
 
         // Input
         Row(

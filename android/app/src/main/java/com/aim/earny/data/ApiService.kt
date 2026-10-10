@@ -2,27 +2,15 @@ package com.aim.earny.data
 
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
+import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.Header
 import retrofit2.http.Multipart
-import retrofit2.http.DELETE
 import retrofit2.http.POST
 import retrofit2.http.Part
 import retrofit2.http.Path
 
 interface ApiService {
-
-    @POST("dm/notify")
-    suspend fun notifyDm(
-        @Header("Authorization") auth: String,
-        @Body body: DmNotifyRequest
-    ): SimpleResponse
-
-    @POST("notify")
-    suspend fun notify(
-        @Header("Authorization") auth: String,
-        @Body body: NotifyRequest
-    ): SimpleResponse
-
 
     @Multipart
     @POST("upload")
@@ -34,11 +22,6 @@ interface ApiService {
         @Part("width") width: RequestBody,
         @Part("height") height: RequestBody
     ): UploadResponse
-
-    @POST("delete-account")
-    suspend fun deleteAccount(
-        @Header("Authorization") auth: String
-    ): SimpleResponse
 
     @DELETE("video/{videoId}")
     suspend fun deleteVideo(
@@ -58,4 +41,21 @@ interface ApiService {
         @Header("Authorization") auth: String,
         @Part file: MultipartBody.Part
     ): UploadResponse
+
+    @POST("notify")
+    suspend fun notify(
+        @Header("Authorization") auth: String,
+        @Body body: NotifyRequest
+    ): SimpleResponse
+
+    @POST("dm/notify")
+    suspend fun notifyDm(
+        @Header("Authorization") auth: String,
+        @Body body: DmNotifyRequest
+    ): SimpleResponse
+
+    @POST("delete-account")
+    suspend fun deleteAccount(
+        @Header("Authorization") auth: String
+    ): SimpleResponse
 }
