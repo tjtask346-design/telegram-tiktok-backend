@@ -126,7 +126,7 @@ async def upload(
 
 @app.api_route("/stream/{msg_id}", methods=["GET", "HEAD"])
 async def stream(msg_id: int, request: Request):
-    """Clean streaming directly from Telegram. No caching, no tricks."""
+    """True Range streaming — no full buffer, no Telethon limit bug."""
     info = await get_video_info(msg_id)
     if not info:
         raise HTTPException(404, "Video not found")
@@ -148,54 +148,62 @@ async def stream(msg_id: int, request: Request):
 
     range_header = request.headers.get("range")
 
-    # Range request → 206 Partial Content
-    if range_header:
-        try:
-            rng = range_header.replace("bytes=", "").split("-")
-            start = int(rng[0]) if rng[0] else 0
-            end = int(rng[1]) if len(rng) > 1 and rng[1] else size - 1
-        except Exception:
-            raise HTTPException(416, "Bad range")
+    # No Range header → serve first 5 MB max (browser-friendly)
+    if not range_header:
+        cap = min(size, 5 * 1024 * 1024)
+        log.info(f"/stream/{msg_id} no-range, sending first {cap} of {size}")
 
-        if start >= size:
-            raise HTTPException(416, "Out of bounds")
-        if end >= size:
-            end = size - 1
-        if start > end:
-            raise HTTPException(416, "Bad range")
-
-        length = end - start + 1
-        log.info(f"/stream/{msg_id} serving range {start}-{end} ({length} bytes)")
-
-        async def gen_range():
-            async for chunk in stream_video(msg_id, offset=start, limit=length):
+        async def gen_norange():
+            async for chunk in stream_video_range(msg_id, 0, cap):
                 yield chunk
 
         return StreamingResponse(
-            gen_range(),
-            status_code=206,
+            gen_norange(),
+            status_code=200,
             media_type=mime,
             headers={
-                "Content-Range": f"bytes {start}-{end}/{size}",
                 "Accept-Ranges": "bytes",
-                "Content-Length": str(length),
+                "Content-Length": str(cap),
                 "Cache-Control": "public, max-age=86400",
             },
         )
 
-    # No Range header → 200 OK full stream
-    log.info(f"/stream/{msg_id} serving full {size} bytes")
+    # Parse Range: bytes=start-end
+    try:
+        rng = range_header.replace("bytes=", "").split("-")
+        start = int(rng[0]) if rng[0] else 0
+        end = int(rng[1]) if len(rng) > 1 and rng[1] else size - 1
+    except Exception as e:
+        log.warning(f"Bad range '{range_header}': {e}")
+        raise HTTPException(416, "Bad Range")
 
-    async def gen_full():
-        async for chunk in stream_video(msg_id, offset=0):
+    if start >= size:
+        raise HTTPException(416, f"Start {start} >= size {size}")
+
+    # Cap range length to 5 MB (Cloudflare-friendly, also saves bandwidth)
+    requested = end - start + 1
+    if requested > 5 * 1024 * 1024:
+        end = start + (5 * 1024 * 1024) - 1
+        log.info(f"/stream/{msg_id} range capped to 5MB")
+
+    if end >= size:
+        end = size - 1
+
+    length = end - start + 1
+    log.info(f"/stream/{msg_id} serving {start}-{end} ({length} bytes of {size})")
+
+    async def gen_range():
+        async for chunk in stream_video_range(msg_id, start, length):
             yield chunk
 
     return StreamingResponse(
-        gen_full(),
+        gen_range(),
+        status_code=206,
         media_type=mime,
         headers={
+            "Content-Range": f"bytes {start}-{end}/{size}",
             "Accept-Ranges": "bytes",
-            "Content-Length": str(size),
+            "Content-Length": str(length),
             "Cache-Control": "public, max-age=86400",
         },
     )
