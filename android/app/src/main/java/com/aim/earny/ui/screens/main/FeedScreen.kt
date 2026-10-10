@@ -2,9 +2,9 @@
 
 package com.aim.earny.ui.screens.main
 
+import android.widget.Toast
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -24,61 +24,73 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.aim.earny.BuildConfig
-import com.aim.earny.R
 import com.aim.earny.data.Video
 import com.aim.earny.ui.theme.*
 import com.aim.earny.vm.FeedViewModel
-import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 @Composable
-fun FeedScreen(onSignOut: () -> Unit, vm: FeedViewModel = viewModel()) {
+fun FeedScreen(vm: FeedViewModel = viewModel()) {
     val videos by vm.videos.collectAsStateWithLifecycle()
     val loading by vm.loading.collectAsStateWithLifecycle()
     val error by vm.error.collectAsStateWithLifecycle()
     var tab by remember { mutableStateOf(1) }
-    val pager = rememberPagerState(pageCount = { videos.size.coerceAtLeast(0) })
 
-    // Reload feed each time this screen composes (after upload)
     LaunchedEffect(Unit) { vm.load() }
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
+
         when {
-            loading && videos.isEmpty() -> {
-                Column(
-                    Modifier.align(Alignment.Center),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    CircularProgressIndicator(color = Gold)
-                    Spacer(Modifier.height(16.dp))
-                    Text("Loading feed...", color = TextWhite60, fontSize = 13.sp)
-                }
+            loading && videos.isEmpty() -> Box(
+                Modifier.fillMaxSize(), contentAlignment = Alignment.Center
+            ) { CircularProgressIndicator(color = Gold) }
+
+            error != null && videos.isEmpty() -> Column(
+                Modifier.fillMaxSize().padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text("Couldn't load feed", color = TextWhite, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(6.dp))
+                Text(error!!, color = TextWhite60, fontSize = 12.sp)
+                Spacer(Modifier.height(16.dp))
+                Button(onClick = { vm.load() }) { Text("Retry") }
             }
-            error != null && videos.isEmpty() -> {
-                Column(
-                    Modifier.align(Alignment.Center).padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text("Couldn't load feed", color = TextWhite, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.height(6.dp))
-                    Text(error!!, color = TextWhite60, fontSize = 12.sp)
-                    Spacer(Modifier.height(16.dp))
-                    Button(onClick = { vm.load() }) { Text("Retry") }
-                }
+
+            videos.isEmpty() -> Column(
+                Modifier.fillMaxSize(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Icon(
+                    Icons.Filled.Videocam, null,
+                    tint = Gold.copy(alpha = 0.7f),
+                    modifier = Modifier.size(56.dp)
+                )
+                Spacer(Modifier.height(16.dp))
+                Text("No videos yet", color = TextWhite, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Tap the Earny Orb to post the first one",
+                    color = TextWhite60, fontSize = 13.sp
+                )
             }
-            videos.isEmpty() -> EmptyFeed()
+
             else -> {
+                val pager = rememberPagerState(pageCount = { videos.size })
                 VerticalPager(state = pager, modifier = Modifier.fillMaxSize()) { page ->
                     VideoPage(videos[page])
                 }
@@ -101,34 +113,6 @@ fun FeedScreen(onSignOut: () -> Unit, vm: FeedViewModel = viewModel()) {
                 modifier = Modifier.size(26.dp)
             )
         }
-    }
-}
-
-@Composable
-private fun EmptyFeed() {
-    Column(
-        Modifier.fillMaxSize().background(Color.Black).padding(32.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Box(
-            Modifier.size(88.dp).clip(CircleShape)
-                .background(Gold.copy(alpha = 0.12f)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                Icons.Filled.Videocam, null,
-                tint = Gold, modifier = Modifier.size(44.dp)
-            )
-        }
-        Spacer(Modifier.height(20.dp))
-        Text("No videos yet", color = TextWhite, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(8.dp))
-        Text(
-            "Be the first to create —\ntap the Earny Orb to start",
-            color = TextWhite60, fontSize = 13.sp, lineHeight = 19.sp,
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center
-        )
     }
 }
 
@@ -158,20 +142,39 @@ private fun VideoPage(video: Video) {
     var liked by remember { mutableStateOf(false) }
     var following by remember { mutableStateOf(false) }
     var burstKey by remember { mutableStateOf(0) }
+    var playbackError by remember { mutableStateOf<String?>(null) }
+    var isPlaying by remember { mutableStateOf(false) }
     val ctx = LocalContext.current
 
+    // ---- ExoPlayer setup with error listener ----
     val exo = remember {
         ExoPlayer.Builder(ctx).build().apply {
             repeatMode = ExoPlayer.REPEAT_MODE_ONE
             playWhenReady = true
+            addListener(object : Player.Listener {
+                override fun onPlaybackStateChanged(state: Int) {
+                    isPlaying = state == Player.STATE_READY
+                    if (state == Player.STATE_ENDED) playbackError = null
+                }
+                override fun onPlayerError(err: PlaybackException) {
+                    playbackError = err.errorCodeName + ": " + (err.message ?: "unknown")
+                }
+            })
         }
     }
 
+    val streamUrl = remember(video.telegramMsgId) {
+        if (video.telegramMsgId > 0)
+            BuildConfig.API_BASE.trimEnd('/') + "/stream/" + video.telegramMsgId
+        else null
+    }
+
     LaunchedEffect(video.id) {
-        if (video.telegramMsgId > 0) {
-            val url = BuildConfig.API_BASE.trimEnd('/') + "/stream/" + video.telegramMsgId
-            exo.setMediaItem(MediaItem.fromUri(url))
+        playbackError = null
+        if (streamUrl != null) {
+            exo.setMediaItem(MediaItem.fromUri(streamUrl))
             exo.prepare()
+            exo.play()
         }
     }
 
@@ -191,20 +194,85 @@ private fun VideoPage(video: Video) {
                 )
             }
     ) {
-        if (video.telegramMsgId > 0) {
+        // ---- Video surface OR fallback ----
+        if (streamUrl != null) {
             AndroidView(
                 factory = {
                     PlayerView(it).apply {
                         player = exo
                         useController = false
+                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                         setShutterBackgroundColor(android.graphics.Color.BLACK)
                     }
                 },
                 modifier = Modifier.fillMaxSize()
             )
+        } else {
+            // No telegram id → gradient placeholder
+            Box(
+                Modifier.fillMaxSize().background(
+                    Brush.verticalGradient(
+                        listOf(GradPurplePink[0], GradPurplePink[1])
+                    )
+                ),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    "Video pending…",
+                    color = Color.White.copy(alpha = 0.7f), fontSize = 14.sp
+                )
+            }
         }
 
-        // Heart burst
+        // ---- Error overlay ----
+        if (playbackError != null) {
+            Box(
+                Modifier.align(Alignment.Center)
+                    .background(Color.Black.copy(alpha = 0.7f), CircleShape)
+                    .padding(horizontal = 20.dp, vertical = 12.dp)
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        Icons.Filled.ErrorOutline, null,
+                        tint = HeartRed,
+                        modifier = Modifier.size(28.dp)
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "Playback failed",
+                        color = Color.White, fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        playbackError!!,
+                        color = TextWhite60, fontSize = 10.sp
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Box(
+                        Modifier.background(Gold, CircleShape)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null
+                            ) {
+                                playbackError = null
+                                exo.prepare()
+                                exo.play()
+                            }
+                            .padding(horizontal = 16.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            "Retry",
+                            color = EarnyBlack,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        }
+
+        // ---- Heart burst ----
         key(burstKey) {
             if (burstKey > 0) {
                 var show by remember { mutableStateOf(true) }
@@ -226,14 +294,16 @@ private fun VideoPage(video: Video) {
             }
         }
 
-        // Bottom info
+        // ---- Bottom info ----
         Column(
             Modifier.align(Alignment.BottomStart)
                 .padding(start = 16.dp, bottom = 90.dp, end = 80.dp)
         ) {
-            val displayName = if (video.uploaderHandle.isNotBlank()) "@" + video.uploaderHandle
-            else if (video.uploaderName.isNotBlank()) video.uploaderName
-            else "earny_user"
+            val displayName = when {
+                video.uploaderHandle.isNotBlank() -> "@" + video.uploaderHandle
+                video.uploaderName.isNotBlank() -> video.uploaderName
+                else -> "earny_user"
+            }
             Text(displayName, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
             if (video.caption.isNotBlank()) {
                 Spacer(Modifier.height(6.dp))
@@ -241,13 +311,16 @@ private fun VideoPage(video: Video) {
             }
             Spacer(Modifier.height(10.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.MusicNote, null, tint = Color.White, modifier = Modifier.size(14.dp))
+                Icon(
+                    Icons.Filled.MusicNote, null,
+                    tint = Color.White, modifier = Modifier.size(14.dp)
+                )
                 Spacer(Modifier.width(6.dp))
                 Text("Original sound - earny", color = Color.White, fontSize = 12.sp)
             }
         }
 
-        // Right actions
+        // ---- Right side actions ----
         Column(
             Modifier.align(Alignment.BottomEnd).padding(end = 12.dp, bottom = 90.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -258,11 +331,11 @@ private fun VideoPage(video: Video) {
                     Modifier.size(48.dp).clip(CircleShape).background(Gold),
                     contentAlignment = Alignment.Center
                 ) {
-                    Image(
-                        painter = painterResource(R.drawable.earny_logo),
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.size(48.dp).clip(CircleShape)
+                    Text(
+                        video.uploaderHandle.firstOrNull()?.uppercase() ?: "E",
+                        color = EarnyBlack,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold
                     )
                 }
                 Box(
@@ -288,9 +361,12 @@ private fun VideoPage(video: Video) {
                 count = (video.likes + if (liked) 1 else 0).toString(),
                 tint = if (liked) HeartRed else Color.White
             ) { if (!liked) liked = true }
+
             ActionItem(Icons.Filled.ChatBubble, video.comments.toString()) {}
             ActionItem(Icons.Filled.Bookmark, "0") {}
-            ActionItem(Icons.Filled.Share, "0") {}
+            ActionItem(Icons.Filled.Share, "0") {
+                Toast.makeText(ctx, "Shared", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 }

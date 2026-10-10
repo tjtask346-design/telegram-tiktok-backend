@@ -17,22 +17,23 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.compose.*
 import com.aim.earny.ui.components.EarnyOrb
+import com.aim.earny.ui.screens.profile.AddFriendsScreen
+import com.aim.earny.ui.screens.profile.EditProfileScreen
 import com.aim.earny.ui.screens.upload.NewPostScreen
 import com.aim.earny.ui.theme.*
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 
 @Composable
-fun MainScaffold(
-    onSignOut: () -> Unit,
-    onEditProfile: () -> Unit = {},
-    onAddFriends: () -> Unit = {}
-) {
+fun MainScaffold(onSignOut: () -> Unit) {
     val nav = rememberNavController()
     val current = nav.currentBackStackEntryAsState().value?.destination?.route
-    var showNewPost by remember { mutableStateOf(false) }
 
-    // Reactive unread state
+    var showNewPost by remember { mutableStateOf(false) }
+    var showEditProfile by remember { mutableStateOf(false) }
+    var showAddFriends by remember { mutableStateOf(false) }
+
+    // Reactive unread dot
     val db = remember { FirebaseFirestore.getInstance() }
     val uid = FirebaseAuth.getInstance().currentUser?.uid
     var hasUnread by remember { mutableStateOf(false) }
@@ -52,14 +53,14 @@ fun MainScaffold(
             nav, startDestination = "feed",
             modifier = Modifier.padding(bottom = 80.dp)
         ) {
-            composable("feed") { FeedScreen(onSignOut = onSignOut) }
+            composable("feed") { FeedScreen() }
             composable("discover") { DiscoverScreen() }
             composable("inbox") { InboxScreen() }
             composable("profile") {
                 ProfileScreen(
                     onSignOut = onSignOut,
-                    onEditProfile = onEditProfile,
-                    onAddFriends = onAddFriends
+                    onEditProfile = { showEditProfile = true },
+                    onAddFriends = { showAddFriends = true }
                 )
             }
         }
@@ -95,17 +96,31 @@ fun MainScaffold(
             }
         }
 
-        // Full-screen new post overlay
+        // Overlays — full screen, no nav route needed
         if (showNewPost) {
             Box(Modifier.fillMaxSize().background(Color.Black)) {
                 NewPostScreen(
                     onClose = { showNewPost = false },
                     onPosted = {
                         showNewPost = false
-                        // Reset feed to "feed" tab; ViewModel reload happens on next composition
                         nav.navigate("feed") { launchSingleTop = true; popUpTo("feed") }
                     }
                 )
+            }
+        }
+
+        if (showEditProfile) {
+            Box(Modifier.fillMaxSize().background(EarnyBlack)) {
+                EditProfileScreen(
+                    onBack = { showEditProfile = false },
+                    onSaved = { showEditProfile = false }
+                )
+            }
+        }
+
+        if (showAddFriends) {
+            Box(Modifier.fillMaxSize().background(EarnyBlack)) {
+                AddFriendsScreen(onBack = { showAddFriends = false })
             }
         }
     }

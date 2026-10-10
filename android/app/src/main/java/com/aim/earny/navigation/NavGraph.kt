@@ -12,8 +12,6 @@ import com.aim.earny.ui.screens.auth.VerifyEmailScreen
 import com.aim.earny.ui.screens.main.MainScaffold
 import com.aim.earny.ui.screens.onboard.OnboardingScreen
 import com.aim.earny.ui.screens.onboard.SplashScreen
-import com.aim.earny.ui.screens.profile.AddFriendsScreen
-import com.aim.earny.ui.screens.profile.EditProfileScreen
 import com.google.firebase.auth.FirebaseAuth
 
 @Composable
@@ -65,14 +63,12 @@ fun EarnyNavGraph(startRoute: String, onSignedOut: () -> Unit) {
                 onLoginSuccess = {
                     val u = FirebaseAuth.getInstance().currentUser
                     when {
-                        u?.isEmailVerified == true ->
-                            nav.navigate(Routes.MAIN) {
-                                popUpTo(Routes.LOGIN) { inclusive = true }
-                            }
-                        !u?.email.isNullOrBlank() ->
-                            nav.navigate(Routes.verify(u!!.email!!)) {
-                                popUpTo(Routes.LOGIN) { inclusive = true }
-                            }
+                        u?.isEmailVerified == true -> nav.navigate(Routes.MAIN) {
+                            popUpTo(Routes.LOGIN) { inclusive = true }
+                        }
+                        !u?.email.isNullOrBlank() -> nav.navigate(Routes.verify(u!!.email!!)) {
+                            popUpTo(Routes.LOGIN) { inclusive = true }
+                        }
                     }
                 },
                 onGoSignup = { nav.navigate(Routes.SIGNUP) }
@@ -95,29 +91,17 @@ fun EarnyNavGraph(startRoute: String, onSignedOut: () -> Unit) {
             )
         }
 
-        composable(Routes.EDIT_PROFILE) {
-            EditProfileScreen(
-                onBack = { nav.popBackStack() },
-                onSaved = { nav.popBackStack() }
-            )
-        }
-
-        composable(Routes.ADD_FRIENDS) {
-            AddFriendsScreen(onBack = { nav.popBackStack() })
-        }
-
         composable(Routes.MAIN) {
-            MainScaffold(
-                onSignOut = {
-                    FirebaseAuth.getInstance().signOut()
-                    onSignedOut()
+            MainScaffold(onSignOut = {
+                val ok = runCatching {
                     nav.navigate(Routes.LOGIN) {
                         popUpTo(Routes.MAIN) { inclusive = true }
+                        launchSingleTop = true
                     }
-                },
-                onEditProfile = { nav.navigate(Routes.EDIT_PROFILE) },
-                onAddFriends = { nav.navigate(Routes.ADD_FRIENDS) }
-            )
+                }.isSuccess
+                FirebaseAuth.getInstance().signOut()
+                onSignedOut()
+            })
         }
     }
 }
