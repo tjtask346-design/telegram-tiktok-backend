@@ -13,7 +13,7 @@ from fastapi import (
 from fastapi.responses import StreamingResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 import firebase_admin
-from firebase_admin import credentials, firestore, messaging
+from firebase_admin import credentials, firestore, messaging, auth as fb_auth
 
 from config import FIREBASE_JSON_PATH, MAX_UPLOAD_BYTES, TG_CHANNEL_ID
 from telegram_client import (
@@ -466,5 +466,113 @@ async def register_fcm_token(
     db.collection("users").document(uid).set(
         {"fcmToken": token}, merge=True
     )
+    return {"ok": True}
+
+# ═══════════════════════════════════════════════════════
+#  DELETE ACCOUNT — full cleanup
+# ═══════════════════════════════════════════════════════
+
+@app.post("/delete-account")
+async def delete_account(authorization: str = Header(...)):
+    uid = await verify_token(authorization)
+    log.info(f"delete-account uid={uid}")
+
+    # 1. Delete user's videos (+ Telegram messages + subcollections)
+    try:
+        vids = db.collection("videos").whereEqualTo("uploader", uid).stream()
+        for v in vids:
+            data = v.to_dict() or {}
+            msg_id = data.get("telegramMsgId")
+            if msg_id:
+                try:
+                    await delete_video(int(msg_id))
+                except Exception:
+                    pass
+            # Subcollections
+            for sub in ("likes", "comments", "views", "reposts"):
+                for s in v.reference.collection(sub).stream():
+                    try: s.reference.delete()
+                    except Exception: pass
+            try: v.reference.delete()
+            except Exception: pass
+    except Exception as e:
+        log.warning(f"video cleanup failed: {e}")
+
+    # 2. Delete profile picture from Telegram
+    try:
+        u = db.collection("users").document(uid).get()
+        if u.exists:
+            pic_id = (u.to_dict() or {}).get("profilePicMsgId")
+            if pic_id:
+                try:
+                    await delete_video(int(pic_id))
+                except Exception:
+                    pass
+    except Exception as e:
+        log.warning(f"pic cleanup failed: {e}")
+
+    # 3. Delete comments this user made on other videos
+    try:
+        for v in db.collection("videos").stream():
+            for c in v.reference.collection("comments").whereEqualTo("uid", uid).stream():
+                try: c.reference.delete()
+                except Exception: pass
+    except Exception as e:
+        log.warning(f"comment cleanup failed: {e}")
+
+    # 4. Delete likes, follows, blocks, reports, bookmarks, notifications
+    for coll in ("follows", "blocks"):
+        try:
+            for d in db.collection(coll).whereEqualTo("blocker" if coll == "blocks" else "follower", uid).stream():
+                try: d.reference.delete()
+                except Exception: pass
+            for d in db.collection(coll).whereEqualTo("blocked" if coll == "blocks" else "followee", uid).stream():
+                try: d.reference.delete()
+                except Exception: pass
+        except Exception as e:
+            log.warning(f"{coll} cleanup failed: {e}")
+
+    try:
+        for d in db.collection("reports").whereEqualTo("reporter", uid).stream():
+            try: d.reference.delete()
+            except Exception: pass
+    except Exception:
+        pass
+
+    # 5. Delete user sub-collections
+    try:
+        for sub in ("bookmarks", "notifications", "drafts", "sessions", "settings", "chats"):
+            for d in db.collection("users").document(uid).collection(sub).stream():
+                try: d.reference.delete()
+                except Exception: pass
+    except Exception as e:
+        log.warning(f"user sub cleanup failed: {e}")
+
+    # 6. Delete username reservation
+    try:
+        u = db.collection("users").document(uid).get()
+        if u.exists:
+            uname = (u.to_dict() or {}).get("usernameLower")
+            if uname:
+                try:
+                    db.collection("usernames").document(uname).delete()
+                except Exception: pass
+    except Exception:
+        pass
+
+    # 7. Delete user doc
+    try:
+        db.collection("users").document(uid).delete()
+    except Exception as e:
+        log.warning(f"user doc delete failed: {e}")
+
+    # 8. Delete Firebase Auth user
+    try:
+        fb_auth.delete_user(uid)
+    except Exception as e:
+        log.warning(f"auth delete failed: {e}")
+        raise HTTPException(500, f"Auth delete failed: {e}")
+
+    log.info(f"delete-account done for {uid}")
     return {"ok": True}
 

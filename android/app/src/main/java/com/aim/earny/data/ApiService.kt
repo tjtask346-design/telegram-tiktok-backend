@@ -29,6 +29,11 @@ interface ApiService {
         @Part("height") height: RequestBody
     ): UploadResponse
 
+    @POST("delete-account")
+    suspend fun deleteAccount(
+        @Header("Authorization") auth: String
+    ): SimpleResponse
+
     @DELETE("video/{videoId}")
     suspend fun deleteVideo(
         @Header("Authorization") auth: String,

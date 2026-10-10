@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Repeat
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material.icons.filled.Videocam
@@ -66,6 +67,7 @@ fun ProfileScreen(
     onSignOut: () -> Unit,
     onEditProfile: () -> Unit,
     onAddFriends: () -> Unit,
+    onOpenSettings: () -> Unit = {},
     targetUid: String? = null,
     vm: ProfileViewModel = viewModel()
 ) {
@@ -100,7 +102,7 @@ fun ProfileScreen(
             ProfileTopBar(
                 username = profile?.username.orEmpty(),
                 onAddFriends = onAddFriends,
-                onSignOut = onSignOut
+                onOpenSettings = onOpenSettings
             )
         } else {
             // Simple bar for other user's profile
@@ -460,7 +462,7 @@ private fun VideoActionsSheet(
 private fun ProfileTopBar(
     username: String,
     onAddFriends: () -> Unit,
-    onSignOut: () -> Unit
+    onOpenSettings: () -> Unit
 ) {
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
@@ -490,13 +492,13 @@ private fun ProfileTopBar(
         )
         Spacer(Modifier.width(14.dp))
         Icon(
-            Icons.Filled.Logout, "logout",
+            Icons.Filled.Settings, "settings",
             tint = TextWhite,
             modifier = Modifier
                 .size(24.dp)
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
-                    indication = null, onClick = onSignOut
+                    indication = null, onClick = onOpenSettings
                 )
         )
     }

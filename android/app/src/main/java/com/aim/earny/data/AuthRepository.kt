@@ -138,4 +138,41 @@ class AuthRepository(
             else -> m
         }
     }
+
+
+    /**
+     * Change password with current-password verification.
+     * Firebase requires recent login for this operation.
+     */
+    suspend fun changePassword(currentPassword: String, newPassword: String) {
+        if (newPassword.length < 6) {
+            throw IllegalArgumentException("New password must be 6+ characters")
+        }
+        val user = auth.currentUser
+            ?: throw IllegalStateException("Not signed in")
+        val email = user.email
+            ?: throw IllegalStateException("No email on account")
+
+        // Re-authenticate
+        val cred = com.google.firebase.auth.EmailAuthProvider
+            .getCredential(email, currentPassword)
+        user.reauthenticate(cred).await()
+
+        // Update
+        user.updatePassword(newPassword).await()
+    }
+
+    /**
+     * Delete account via backend (cleans Firestore + Telegram),
+     * then signs out locally.
+     */
+    suspend fun deleteAccountViaBackend(api: ApiService) {
+        val user = auth.currentUser
+            ?: throw IllegalStateException("Not signed in")
+        val token = user.getIdToken(false).await().token
+            ?: throw IllegalStateException("No token")
+        api.deleteAccount("Bearer $token")
+        // Auth user deleted server-side; clear local session
+        auth.signOut()
+    }
 }

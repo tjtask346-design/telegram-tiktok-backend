@@ -35,6 +35,7 @@ fun MainScaffold(onSignOut: () -> Unit) {
     var showAddFriends by remember { mutableStateOf(false) }
     var showOtherProfile by remember { mutableStateOf<String?>(null) }
     var showSearch by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
 
     // Reactive unread dot
     val db = remember { FirebaseFirestore.getInstance() }
@@ -68,7 +69,8 @@ fun MainScaffold(onSignOut: () -> Unit) {
                 ProfileScreen(
                     onSignOut = onSignOut,
                     onEditProfile = { showEditProfile = true },
-                    onAddFriends = { showAddFriends = true }
+                    onAddFriends = { showAddFriends = true },
+                    onOpenSettings = { showSettings = true }
                 )
             }
         }
@@ -129,6 +131,19 @@ fun MainScaffold(onSignOut: () -> Unit) {
                         showEditProfile = false
                         // Signal Profile to reload from Firestore
                         AppEvents.triggerProfileRefresh()
+                    }
+                )
+            }
+        }
+
+        if (showSettings) {
+            Box(Modifier.fillMaxSize().background(EarnyBlack)) {
+                com.aim.earny.ui.screens.profile.SettingsScreen(
+                    onClose = { showSettings = false },
+                    onSignOut = {
+                        showSettings = false
+                        FirebaseAuth.getInstance().signOut()
+                        onSignOut()
                     }
                 )
             }
