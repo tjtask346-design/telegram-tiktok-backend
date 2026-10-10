@@ -52,6 +52,7 @@ object DocumentMapper {
         uploader = doc.str("uploader"),
         uploaderName = doc.str("uploaderName"),
         uploaderHandle = doc.str("uploaderHandle"),
+        uploaderPicMsgId = doc.lng("uploaderPicMsgId"),
         caption = doc.str("caption"),
         telegramMsgId = doc.lng("telegramMsgId"),
         likes = doc.lng("likes"),

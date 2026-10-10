@@ -5,6 +5,7 @@ data class Video(
     val uploader: String = "",
     val uploaderName: String = "",
     val uploaderHandle: String = "",
+    val uploaderPicMsgId: Long = 0L,
     val caption: String = "",
     val telegramMsgId: Long = 0,
     val likes: Long = 0,

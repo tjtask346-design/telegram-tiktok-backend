@@ -124,12 +124,14 @@ async def upload(
     # Lookup uploader's profile for display name
     uploader_name = "user"
     uploader_handle = ""
+    uploader_pic_id = 0
     try:
         u_doc = db.collection("users").document(uid).get()
         if u_doc.exists:
             d = u_doc.to_dict() or {}
             uploader_handle = d.get("username", "") or ""
             uploader_name = d.get("fullName", "") or d.get("firstName", "user")
+            uploader_pic_id = int(d.get("profilePicMsgId", 0) or 0)
     except Exception as e:
         log.warning(f"profile lookup failed: {e}")
 
@@ -146,6 +148,7 @@ async def upload(
         "uploader": uid,
         "uploaderName": uploader_name,
         "uploaderHandle": uploader_handle,
+        "uploaderPicMsgId": uploader_pic_id,
         "caption": caption,
         "telegramMsgId": msg_id,
         "sizeBytes": total,

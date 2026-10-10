@@ -43,6 +43,7 @@ import com.aim.earny.data.ReportRepository
 import com.aim.earny.data.Video
 import com.aim.earny.data.formatCount
 import com.aim.earny.ui.components.CommentsSheet
+import com.aim.earny.ui.components.SafeAvatar
 import com.aim.earny.ui.components.HashtagCaption
 import com.aim.earny.ui.theme.*
 import com.aim.earny.vm.FeedViewModel
@@ -505,26 +506,28 @@ private fun VideoPage(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
-            Box {
-                Box(
-                    Modifier.size(48.dp).clip(CircleShape).background(Gold)
+            Box(
+                modifier = Modifier.height(58.dp),
+                contentAlignment = Alignment.TopCenter
+            ) {
+                SafeAvatar(
+                    name = video.uploaderHandle.ifBlank {
+                        video.uploaderName.ifBlank { "E" }
+                    },
+                    size = 48.dp,
+                    picMsgId = video.uploaderPicMsgId,
+                    modifier = Modifier
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null, onClick = onOpenProfile
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        video.uploaderHandle.firstOrNull()?.uppercase()
-                            ?: video.uploaderName.firstOrNull()?.uppercase() ?: "E",
-                        color = EarnyBlack, fontSize = 20.sp, fontWeight = FontWeight.Bold
-                    )
-                }
+                        )
+                )
                 if (!isMine) {
                     Box(
-                        Modifier.size(20.dp)
+                        Modifier
+                            .size(20.dp)
+                            .align(Alignment.BottomCenter)
                             .background(if (isFollowing) Gold else HeartRed, CircleShape)
-                            .align(Alignment.BottomCenter).offset(y = 8.dp)
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null, onClick = onToggleFollow
@@ -532,7 +535,8 @@ private fun VideoPage(
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            if (isFollowing) Icons.Filled.Check else Icons.Filled.Add, null,
+                            imageVector = if (isFollowing) Icons.Filled.Check else Icons.Filled.Add,
+                            contentDescription = if (isFollowing) "Following" else "Follow",
                             tint = if (isFollowing) EarnyBlack else Color.White,
                             modifier = Modifier.size(14.dp)
                         )
