@@ -59,6 +59,8 @@ class ProfileViewModel : ViewModel() {
     val isOwnProfile = _isOwnProfile.asStateFlow()
 
     private val _isFollowing = MutableStateFlow(false)
+    private val _deleting = MutableStateFlow(false)
+    val deleting = _deleting.asStateFlow()
     val isFollowing = _isFollowing.asStateFlow()
 
     private var currentTargetUid: String? = null
@@ -141,6 +143,31 @@ class ProfileViewModel : ViewModel() {
             } catch (e: Exception) {
                 // Revert on failure
                 _isFollowing.value = !optimistic
+            }
+        }
+    }
+
+
+    /** Delete own video + refresh lists. */
+    fun deleteVideo(video: Video) {
+        val me = auth.currentUser?.uid ?: return
+        if (video.uploader != me) return
+
+        viewModelScope.launch {
+            _deleting.value = true
+            try {
+                val ok = videoRepo.deleteVideo(video.id)
+                if (ok) {
+                    // Optimistic removal from all local lists
+                    _videos.value = _videos.value.filter { it.id != video.id }
+                    _privateVideos.value = _privateVideos.value.filter { it.id != video.id }
+                    _saved.value = _saved.value.filter { it.id != video.id }
+                    // Tell other screens
+                    com.aim.earny.data.AppEvents.triggerFeedRefresh()
+                    com.aim.earny.data.AppEvents.triggerProfileRefresh()
+                }
+            } finally {
+                _deleting.value = false
             }
         }
     }

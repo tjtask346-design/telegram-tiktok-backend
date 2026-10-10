@@ -121,4 +121,16 @@ class VideoRepository(
         }
         return result
     }
+
+
+    /** Delete own video via backend (which also removes Telegram msg + subcollections). */
+    suspend fun deleteVideo(videoId: String): Boolean {
+        val me = auth.currentUser ?: return false
+        val token = runCatching { me.getIdToken(false).await().token }.getOrNull()
+            ?: return false
+        return runCatching {
+            api.deleteVideo("Bearer $token", videoId)
+            true
+        }.getOrDefault(false)
+    }
 }

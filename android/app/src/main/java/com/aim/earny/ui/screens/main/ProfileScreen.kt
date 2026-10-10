@@ -4,6 +4,7 @@ import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -14,6 +15,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.GridView
@@ -28,9 +30,11 @@ import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,6 +42,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -82,6 +87,8 @@ fun ProfileScreen(
     val ctx = LocalContext.current
     var currentTab by remember { mutableStateOf(ProfileTab.VIDEOS) }
     var playingVideo by remember { mutableStateOf<Video?>(null) }
+    var pendingDelete by remember { mutableStateOf<Video?>(null) }
+    var showActionsFor by remember { mutableStateOf<Video?>(null) }
 
     Column(Modifier.fillMaxSize().background(EarnyBlack)) {
 
@@ -163,7 +170,11 @@ fun ProfileScreen(
                         EmptyTab(tab = currentTab, isOwn = isOwn)
                     }
                 } else {
-                    items(list) { v -> VideoTile(video = v, onTap = { playingVideo = v }) }
+                    items(list) { v -> VideoTile(
+                        video = v,
+                        onTap = { playingVideo = v },
+                        onLongPress = { if (isOwn) showActionsFor = v }
+                    ) }
                 }
             }
         }
@@ -175,6 +186,106 @@ fun ProfileScreen(
             video = v,
             onClose = { playingVideo = null }
         )
+    }
+
+    // Long-press action sheet
+    showActionsFor?.let { v ->
+        VideoActionsSheet(
+            onDismiss = { showActionsFor = null },
+            onPlay = {
+                playingVideo = v
+                showActionsFor = null
+            },
+            onDelete = {
+                pendingDelete = v
+                showActionsFor = null
+            }
+        )
+    }
+
+    // Delete confirmation
+    pendingDelete?.let { v ->
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            containerColor = EarnySurface,
+            title = { Text("Delete video?", color = TextWhite) },
+            text = {
+                Text(
+                    "This will permanently remove the video. This cannot be undone.",
+                    color = TextWhite60
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    vm.deleteVideo(v)
+                    pendingDelete = null
+                }) {
+                    Text("Delete", color = Color(0xFFE53935), fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDelete = null }) {
+                    Text("Cancel", color = TextWhite)
+                }
+            }
+        )
+    }
+}
+
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun VideoActionsSheet(
+    onDismiss: () -> Unit,
+    onPlay: () -> Unit,
+    onDelete: () -> Unit
+) {
+    androidx.compose.material3.ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = EarnySurface,
+        dragHandle = {
+            androidx.compose.material3.BottomSheetDefaults.DragHandle(color = TextWhite40)
+        }
+    ) {
+        Column(Modifier.padding(bottom = 24.dp)) {
+            Row(
+                Modifier.fillMaxWidth()
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null, onClick = onPlay
+                    )
+                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Filled.PlayArrow, null,
+                    tint = TextWhite, modifier = Modifier.size(22.dp)
+                )
+                Spacer(Modifier.width(16.dp))
+                Text("Play video", color = TextWhite, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+            }
+
+            Row(
+                Modifier.fillMaxWidth()
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null, onClick = onDelete
+                    )
+                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Filled.Delete, null,
+                    tint = Color(0xFFE53935), modifier = Modifier.size(22.dp)
+                )
+                Spacer(Modifier.width(16.dp))
+                Text(
+                    "Delete video",
+                    color = Color(0xFFE53935),
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        }
     }
 }
 
@@ -435,7 +546,11 @@ private fun TabItem(
 }
 
 @Composable
-private fun VideoTile(video: Video, onTap: () -> Unit) {
+private fun VideoTile(
+    video: Video,
+    onTap: () -> Unit,
+    onLongPress: () -> Unit
+) {
     val gradients = listOf(
         GradPurplePink, GradBlueCyan, GradOrangeRed,
         GradGreenTeal, GradGoldOrange
@@ -453,6 +568,11 @@ private fun VideoTile(video: Video, onTap: () -> Unit) {
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null, onClick = onTap
             )
+            .pointerInput(video.id) {
+                detectTapGestures(
+                    onLongPress = { onLongPress() }
+                )
+            }
     ) {
         // Show thumbnail if available; otherwise just the play icon
         if (video.thumbB64.isNotBlank()) {
