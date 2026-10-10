@@ -124,9 +124,7 @@ fun EditProfileScreen(
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = Gold)
             }
-            return@Column
-        }
-
+        } else {
         Column(
             Modifier.weight(1f).verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp),
