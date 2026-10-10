@@ -56,7 +56,11 @@ fun MainScaffold(onSignOut: () -> Unit) {
             nav, startDestination = "feed",
             modifier = Modifier.padding(bottom = 80.dp)
         ) {
-            composable("feed") { FeedScreen() }
+            composable("feed") {
+                FeedScreen(
+                    onOpenProfile = { uid -> showOtherProfile = uid }
+                )
+            }
             composable("discover") { DiscoverScreen(onOpenProfile = { uid -> showOtherProfile = uid }) }
             composable("inbox") { InboxScreen() }
             composable("profile") {

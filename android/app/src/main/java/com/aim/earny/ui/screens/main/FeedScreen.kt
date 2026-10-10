@@ -1,8 +1,7 @@
-@file:OptIn(ExperimentalFoundationApi::class, UnstableApi::class)
+@file:OptIn(ExperimentalFoundationApi::class)
 
 package com.aim.earny.ui.screens.main
 
-import android.content.Context
 import android.widget.Toast
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -31,14 +30,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.media3.common.C
 import androidx.media3.common.MediaItem
-import androidx.media3.common.util.UnstableApi
-import androidx.media3.datasource.DataSource
-import androidx.media3.datasource.DefaultDataSource
-import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.aim.earny.BuildConfig
@@ -47,47 +40,42 @@ import com.aim.earny.data.Video
 import com.aim.earny.data.formatCount
 import com.aim.earny.ui.theme.*
 import com.aim.earny.vm.FeedViewModel
-
-/**
- * 🎯 THE MAGIC: Custom DataSource that forces ExoPlayer
- * to always send open-ended Range requests (bytes=N-)
- * instead of small bounded ranges (bytes=N-M).
- *
- * This bypasses Cloudflare's 502 on small ranges entirely.
- */
-@UnstableApi
-private fun buildCloudflareSafeDataSourceFactory(context: Context): DataSource.Factory {
-    val baseFactory = DefaultDataSource.Factory(context)
-    // Anonymous object — SAM conversion with default methods can be flaky
-    val resolver = object : ResolvingDataSource.Resolver {
-        override fun resolveDataSpec(dataSpec: androidx.media3.datasource.DataSpec): androidx.media3.datasource.DataSpec {
-            // Keep same position, remove the length cap.
-            // Converts "Range: bytes=N-M" into "Range: bytes=N-"
-            // which Cloudflare accepts unconditionally.
-            return dataSpec.subrange(0L, C.LENGTH_UNSET.toLong())
-        }
-    }
-    return ResolvingDataSource.Factory(baseFactory, resolver)
-}
+import com.google.firebase.auth.FirebaseAuth
 
 @Composable
-fun FeedScreen(vm: FeedViewModel = viewModel()) {
-    val videos by vm.videos.collectAsStateWithLifecycle()
+fun FeedScreen(
+    onOpenProfile: (String) -> Unit = {},
+    vm: FeedViewModel = viewModel()
+) {
+    val allVideos by vm.videos.collectAsStateWithLifecycle()
     val loading by vm.loading.collectAsStateWithLifecycle()
     val error by vm.error.collectAsStateWithLifecycle()
     val likedIds by vm.likedIds.collectAsStateWithLifecycle()
-    var tab by remember { mutableStateOf(1) }
+    val followingIds by vm.followingIds.collectAsStateWithLifecycle()
+
+    var tab by remember { mutableStateOf(1) } // 0 = Following, 1 = For You
 
     val feedRefresh by AppEvents.feedRefresh.collectAsStateWithLifecycle()
     LaunchedEffect(feedRefresh) { vm.load() }
 
+    val myUid = FirebaseAuth.getInstance().currentUser?.uid
+
+    // Local filter for Following tab
+    val videos = remember(tab, allVideos, followingIds, myUid) {
+        if (tab == 0) {
+            allVideos.filter {
+                followingIds.contains(it.uploader) || it.uploader == myUid
+            }
+        } else allVideos
+    }
+
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         when {
-            loading && videos.isEmpty() -> Box(
+            loading && allVideos.isEmpty() -> Box(
                 Modifier.fillMaxSize(), contentAlignment = Alignment.Center
             ) { CircularProgressIndicator(color = Gold) }
 
-            error != null && videos.isEmpty() -> Column(
+            error != null && allVideos.isEmpty() -> Column(
                 Modifier.fillMaxSize().padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
@@ -105,16 +93,20 @@ fun FeedScreen(vm: FeedViewModel = viewModel()) {
                 verticalArrangement = Arrangement.Center
             ) {
                 Icon(
-                    Icons.Filled.Videocam, null,
+                    if (tab == 0) Icons.Filled.People else Icons.Filled.Videocam, null,
                     tint = Gold.copy(alpha = 0.7f),
                     modifier = Modifier.size(56.dp)
                 )
                 Spacer(Modifier.height(16.dp))
-                Text("No videos yet", color = TextWhite, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    if (tab == 0) "No followed creators yet" else "No videos yet",
+                    color = TextWhite, fontSize = 18.sp, fontWeight = FontWeight.Bold
+                )
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "Tap the Earny Orb to post the first one",
-                    color = TextWhite60, fontSize = 13.sp
+                    if (tab == 0) "Follow creators to see their videos here"
+                    else "Tap the Earny Orb to post the first one",
+                    color = TextWhite60, fontSize = 13.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center
                 )
             }
 
@@ -123,12 +115,8 @@ fun FeedScreen(vm: FeedViewModel = viewModel()) {
                 val currentIndex = pager.currentPage
                 val ctx = LocalContext.current
 
-                // ---- SINGLE ExoPlayer with Cloudflare-safe DataSource ----
                 val exo = remember {
-                    val safeFactory = buildCloudflareSafeDataSourceFactory(ctx)
-                    val mediaSourceFactory = DefaultMediaSourceFactory(safeFactory)
                     ExoPlayer.Builder(ctx)
-                        .setMediaSourceFactory(mediaSourceFactory)
                         .build()
                         .apply {
                             repeatMode = ExoPlayer.REPEAT_MODE_ONE
@@ -136,9 +124,7 @@ fun FeedScreen(vm: FeedViewModel = viewModel()) {
                         }
                 }
 
-                DisposableEffect(Unit) {
-                    onDispose { exo.release() }
-                }
+                DisposableEffect(Unit) { onDispose { exo.release() } }
 
                 LaunchedEffect(currentIndex, videos.size) {
                     if (videos.isNotEmpty() && currentIndex in videos.indices) {
@@ -162,8 +148,12 @@ fun FeedScreen(vm: FeedViewModel = viewModel()) {
                         isCurrentPage = page == currentIndex,
                         exo = exo,
                         isLiked = likedIds.contains(v.id),
+                        isFollowing = followingIds.contains(v.uploader),
+                        isMine = v.uploader == myUid,
                         onToggleLike = { vm.toggleLike(v) },
-                        onBecameVisible = { vm.onPageVisible(v) }
+                        onToggleFollow = { vm.toggleFollow(v.uploader) },
+                        onBecameVisible = { vm.onPageVisible(v) },
+                        onOpenProfile = { onOpenProfile(v.uploader) }
                     )
                 }
             }
@@ -215,14 +205,16 @@ private fun VideoPage(
     isCurrentPage: Boolean,
     exo: ExoPlayer,
     isLiked: Boolean,
+    isFollowing: Boolean,
+    isMine: Boolean,
     onToggleLike: () -> Unit,
-    onBecameVisible: () -> Unit
+    onToggleFollow: () -> Unit,
+    onBecameVisible: () -> Unit,
+    onOpenProfile: () -> Unit
 ) {
-    var following by remember { mutableStateOf(false) }
     var burstKey by remember { mutableStateOf(0) }
     val ctx = LocalContext.current
 
-    // Notify VM when this page becomes the active one
     LaunchedEffect(isCurrentPage) {
         if (isCurrentPage) onBecameVisible()
     }
@@ -309,31 +301,40 @@ private fun VideoPage(
         ) {
             Box {
                 Box(
-                    Modifier.size(48.dp).clip(CircleShape).background(Gold),
+                    Modifier.size(48.dp).clip(CircleShape).background(Gold)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) { onOpenProfile() },
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        video.uploaderHandle.firstOrNull()?.uppercase() ?: "E",
+                        video.uploaderHandle.firstOrNull()?.uppercase()
+                            ?: video.uploaderName.firstOrNull()?.uppercase()
+                            ?: "E",
                         color = EarnyBlack,
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Bold
                     )
                 }
-                Box(
-                    Modifier.size(20.dp)
-                        .background(if (following) Gold else HeartRed, CircleShape)
-                        .align(Alignment.BottomCenter).offset(y = 8.dp)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null
-                        ) { following = !following },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        if (following) Icons.Filled.Check else Icons.Filled.Add, null,
-                        tint = if (following) EarnyBlack else Color.White,
-                        modifier = Modifier.size(14.dp)
-                    )
+                // Hide follow badge on own videos
+                if (!isMine) {
+                    Box(
+                        Modifier.size(20.dp)
+                            .background(if (isFollowing) Gold else HeartRed, CircleShape)
+                            .align(Alignment.BottomCenter).offset(y = 8.dp)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null
+                            ) { onToggleFollow() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            if (isFollowing) Icons.Filled.Check else Icons.Filled.Add, null,
+                            tint = if (isFollowing) EarnyBlack else Color.White,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
                 }
             }
 
