@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalFoundationApi::class)
+@file:OptIn(ExperimentalFoundationApi::class, UnstableApi::class)
 
 package com.aim.earny.ui.screens.main
 
@@ -31,16 +31,37 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
-import androidx.media3.common.PlaybackException
-import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.aim.earny.BuildConfig
 import com.aim.earny.data.Video
 import com.aim.earny.ui.theme.*
 import com.aim.earny.vm.FeedViewModel
+
+/**
+ * 🎯 THE MAGIC: Custom DataSource that forces ExoPlayer
+ * to always send open-ended Range requests (bytes=N-)
+ * instead of small bounded ranges (bytes=N-M).
+ *
+ * This bypasses Cloudflare's 502 on small ranges entirely.
+ */
+@UnstableApi
+private fun buildCloudflareSafeDataSourceFactory(context: Context): DataSource.Factory {
+    val baseFactory = DefaultDataSource.Factory(context)
+    return ResolvingDataSource.Factory(baseFactory) { dataSpec ->
+        // Rewrite: any request → open-ended from its position
+        // "bytes=1000-2000" becomes "bytes=1000-"
+        dataSpec.withLength(C.LENGTH_UNSET)
+    }
+}
 
 @Composable
 fun FeedScreen(vm: FeedViewModel = viewModel()) {
@@ -93,19 +114,23 @@ fun FeedScreen(vm: FeedViewModel = viewModel()) {
                 val currentIndex = pager.currentPage
                 val ctx = LocalContext.current
 
-                // ---- SINGLE ExoPlayer for entire feed ----
+                // ---- SINGLE ExoPlayer with Cloudflare-safe DataSource ----
                 val exo = remember {
-                    ExoPlayer.Builder(ctx).build().apply {
-                        repeatMode = ExoPlayer.REPEAT_MODE_ONE
-                        playWhenReady = true
-                    }
+                    val safeFactory = buildCloudflareSafeDataSourceFactory(ctx)
+                    val mediaSourceFactory = DefaultMediaSourceFactory(safeFactory)
+                    ExoPlayer.Builder(ctx)
+                        .setMediaSourceFactory(mediaSourceFactory)
+                        .build()
+                        .apply {
+                            repeatMode = ExoPlayer.REPEAT_MODE_ONE
+                            playWhenReady = true
+                        }
                 }
 
                 DisposableEffect(Unit) {
                     onDispose { exo.release() }
                 }
 
-                // ---- Swap media when page changes ----
                 LaunchedEffect(currentIndex, videos.size) {
                     if (videos.isNotEmpty() && currentIndex in videos.indices) {
                         val v = videos[currentIndex]
@@ -182,7 +207,6 @@ private fun VideoPage(
     var burstKey by remember { mutableStateOf(0) }
     val ctx = LocalContext.current
 
-    // If not current page, don't show PlayerView (avoids multiple surfaces)
     Box(
         Modifier.fillMaxSize().background(Color.Black)
             .pointerInput(video.id, isCurrentPage) {
@@ -198,7 +222,6 @@ private fun VideoPage(
                 )
             }
     ) {
-        // Only the current page shows the PlayerView
         if (isCurrentPage) {
             AndroidView(
                 factory = {
@@ -213,7 +236,6 @@ private fun VideoPage(
             )
         }
 
-        // Heart burst
         key(burstKey) {
             if (burstKey > 0) {
                 var show by remember { mutableStateOf(true) }
@@ -235,7 +257,6 @@ private fun VideoPage(
             }
         }
 
-        // Bottom info
         Column(
             Modifier.align(Alignment.BottomStart)
                 .padding(start = 16.dp, bottom = 90.dp, end = 80.dp)
@@ -261,7 +282,6 @@ private fun VideoPage(
             }
         }
 
-        // Right side actions
         Column(
             Modifier.align(Alignment.BottomEnd).padding(end = 12.dp, bottom = 90.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
