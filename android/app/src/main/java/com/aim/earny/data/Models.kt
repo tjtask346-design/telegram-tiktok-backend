@@ -90,3 +90,14 @@ data class AppNotification(
     val unread: Boolean = false,
     val createdAtMs: Long = 0L
 )
+
+
+data class Draft(
+    val id: String = "",
+    val caption: String = "",
+    val localVideoPath: String = "",
+    val duration: Int = 0,
+    val width: Int = 0,
+    val height: Int = 0,
+    val createdAtMs: Long = 0L
+)

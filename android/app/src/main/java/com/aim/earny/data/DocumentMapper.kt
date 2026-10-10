@@ -119,4 +119,14 @@ object DocumentMapper {
         unread = doc.bool("unread"),
         createdAtMs = doc.timestampMs("createdAt")
     )
+
+    fun draft(doc: DocumentSnapshot): Draft = Draft(
+        id = doc.id,
+        caption = doc.str("caption"),
+        localVideoPath = doc.str("localVideoPath"),
+        duration = doc.lng("duration").toInt(),
+        width = doc.lng("width").toInt(),
+        height = doc.lng("height").toInt(),
+        createdAtMs = doc.timestampMs("createdAt")
+    )
 }

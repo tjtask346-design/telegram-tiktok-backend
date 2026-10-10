@@ -24,6 +24,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -41,6 +42,14 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
+import com.aim.earny.data.Draft
+import com.aim.earny.data.DraftRepository
+import java.io.File
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.BottomSheetDefaults
+import androidx.compose.runtime.rememberCoroutineScope
 import com.aim.earny.ui.theme.*
 import com.aim.earny.vm.UploadState
 import com.aim.earny.vm.UploadViewModel
@@ -57,6 +66,13 @@ fun NewPostScreen(
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
     var caption by remember { mutableStateOf("") }
     var showSheet by remember { mutableStateOf(true) }
+    var draftMode by remember { mutableStateOf<Draft?>(null) }
+    var showDrafts by remember { mutableStateOf(false) }
+    var drafts by remember { mutableStateOf<List<Draft>>(emptyList()) }
+    var savingDraft by remember { mutableStateOf(false) }
+
+    val draftRepo = remember { DraftRepository() }
+    val scope = rememberCoroutineScope()
 
     val galleryLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.GetContent()
@@ -69,6 +85,12 @@ fun NewPostScreen(
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
             result.data?.data?.let { selectedUri = it; showSheet = false }
+        }
+    }
+
+    LaunchedEffect(showDrafts) {
+        if (showDrafts) {
+            drafts = draftRepo.list()
         }
     }
 
@@ -142,6 +164,33 @@ fun NewPostScreen(
                         modifier = Modifier.weight(1f)
                     ) { galleryLauncher.launch("video/*") }
                 }
+
+                Spacer(Modifier.height(24.dp))
+
+                // Drafts button
+                Row(
+                    Modifier
+                        .clip(RoundedCornerShape(100.dp))
+                        .background(EarnySurface)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) {
+                            showDrafts = true
+                        }
+                        .padding(horizontal = 20.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Filled.Drafts, null,
+                        tint = Gold, modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "View drafts",
+                        color = Gold, fontSize = 13.sp, fontWeight = FontWeight.Bold
+                    )
+                }
             }
 
             // Close button top-left
@@ -200,6 +249,52 @@ fun NewPostScreen(
                     Icon(Icons.Filled.ArrowBack, "back", tint = Color.White, modifier = Modifier.size(26.dp))
                 }
                 Spacer(Modifier.weight(1f))
+
+                // Save draft button
+                Box(
+                    Modifier
+                        .clip(RoundedCornerShape(100.dp))
+                        .background(EarnyInput)
+                        .clickable(
+                            enabled = !savingDraft,
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) {
+                            val uri = selectedUri ?: return@clickable
+                            scope.launch {
+                                savingDraft = true
+                                try {
+                                    val d = draftRepo.save(
+                                        context, uri, caption, 0, 0, 0
+                                    )
+                                    // Clear + go back
+                                    selectedUri = null
+                                    caption = ""
+                                    onClose()
+                                } catch (_: Exception) {
+                                } finally {
+                                    savingDraft = false
+                                }
+                            }
+                        }
+                        .padding(horizontal = 16.dp, vertical = 10.dp)
+                ) {
+                    if (savingDraft) {
+                        CircularProgressIndicator(
+                            color = Gold, strokeWidth = 2.dp,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    } else {
+                        Text(
+                            "Draft",
+                            color = Gold, fontWeight = FontWeight.Bold, fontSize = 13.sp
+                        )
+                    }
+                }
+
+                Spacer(Modifier.width(8.dp))
+
+                // Post button
                 Box(
                     Modifier.clip(RoundedCornerShape(100.dp))
                         .background(Gold)
@@ -322,6 +417,118 @@ fun NewPostScreen(
                         Icon(Icons.Filled.ErrorOutline, null, tint = Color.White)
                         Spacer(Modifier.width(10.dp))
                         Text(s.msg, color = Color.White, fontSize = 13.sp)
+                    }
+                }
+            }
+        }
+    }
+
+    // ──── Drafts bottom sheet ────
+    if (showDrafts) {
+        ModalBottomSheet(
+            onDismissRequest = { showDrafts = false },
+            containerColor = EarnySurface,
+            dragHandle = {
+                BottomSheetDefaults.DragHandle(color = TextWhite40)
+            }
+        ) {
+            Column(
+                Modifier.fillMaxWidth().padding(bottom = 24.dp)
+            ) {
+                Text(
+                    "Your drafts",
+                    color = Color.White, fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.fillMaxWidth()
+                        .padding(20.dp),
+                    textAlign = TextAlign.Center
+                )
+
+                if (drafts.isEmpty()) {
+                    Column(
+                        Modifier.fillMaxWidth().padding(40.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(
+                            Icons.Filled.Drafts, null,
+                            tint = Gold.copy(alpha = 0.6f),
+                            modifier = Modifier.size(48.dp)
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        Text(
+                            "No drafts yet",
+                            color = Color.White, fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            "Save videos here to post later",
+                            color = TextWhite60, fontSize = 12.sp
+                        )
+                    }
+                } else {
+                    LazyColumn(
+                        Modifier.fillMaxWidth().heightIn(max = 400.dp)
+                    ) {
+                        items(drafts) { d ->
+                            Row(
+                                Modifier.fillMaxWidth()
+                                    .clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null
+                                    ) {
+                                        // Resume: load into post composer
+                                        draftMode = d
+                                        val f = File(d.localVideoPath)
+                                        if (f.exists()) {
+                                            selectedUri = Uri.fromFile(f)
+                                            caption = d.caption
+                                            showDrafts = false
+                                            showSheet = false
+                                        }
+                                    }
+                                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    Modifier.size(56.dp).clip(RoundedCornerShape(10.dp))
+                                        .background(EarnyInput),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        Icons.Filled.Videocam, null,
+                                        tint = Gold, modifier = Modifier.size(24.dp)
+                                    )
+                                }
+                                Spacer(Modifier.width(14.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        d.caption.ifBlank { "Untitled" },
+                                        color = Color.White, fontSize = 14.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1
+                                    )
+                                    Text(
+                                        "Tap to resume",
+                                        color = TextWhite60, fontSize = 11.sp
+                                    )
+                                }
+                                Icon(
+                                    Icons.Filled.Delete, null,
+                                    tint = Color(0xFFE53935),
+                                    modifier = Modifier.size(22.dp)
+                                        .clickable(
+                                            interactionSource = remember { MutableInteractionSource() },
+                                            indication = null
+                                        ) {
+                                            scope.launch {
+                                                draftRepo.delete(context, d)
+                                                drafts = draftRepo.list()
+                                            }
+                                        }
+                                )
+                            }
+                        }
                     }
                 }
             }
