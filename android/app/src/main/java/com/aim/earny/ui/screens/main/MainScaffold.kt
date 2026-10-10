@@ -23,7 +23,11 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 
 @Composable
-fun MainScaffold(onSignOut: () -> Unit) {
+fun MainScaffold(
+    onSignOut: () -> Unit,
+    onEditProfile: () -> Unit = {},
+    onAddFriends: () -> Unit = {}
+) {
     val nav = rememberNavController()
     val current = nav.currentBackStackEntryAsState().value?.destination?.route
     var showNewPost by remember { mutableStateOf(false) }
@@ -51,7 +55,13 @@ fun MainScaffold(onSignOut: () -> Unit) {
             composable("feed") { FeedScreen(onSignOut = onSignOut) }
             composable("discover") { DiscoverScreen() }
             composable("inbox") { InboxScreen() }
-            composable("profile") { ProfileScreen(onSignOut = onSignOut) }
+            composable("profile") {
+                ProfileScreen(
+                    onSignOut = onSignOut,
+                    onEditProfile = onEditProfile,
+                    onAddFriends = onAddFriends
+                )
+            }
         }
 
         // Bottom nav

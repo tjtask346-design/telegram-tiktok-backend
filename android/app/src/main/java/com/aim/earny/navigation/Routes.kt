@@ -7,6 +7,8 @@ object Routes {
     const val LOGIN = "login"
     const val VERIFY = "verify/{email}"
     const val MAIN = "main"
+    const val EDIT_PROFILE = "edit_profile"
+    const val ADD_FRIENDS = "add_friends"
 
     fun verify(email: String): String {
         val encoded = try {

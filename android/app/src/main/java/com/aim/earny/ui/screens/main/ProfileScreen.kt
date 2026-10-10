@@ -1,23 +1,11 @@
 package com.aim.earny.ui.screens.main
 
+import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -33,7 +21,6 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Logout
-import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PushPin
@@ -44,19 +31,14 @@ import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -69,32 +51,19 @@ import com.aim.earny.data.Video
 import com.aim.earny.data.formatCount
 import com.aim.earny.ui.components.EarnyButton
 import com.aim.earny.ui.components.SafeAvatar
-import com.aim.earny.ui.theme.EarnyBlack
-import com.aim.earny.ui.theme.EarnyBorder
-import com.aim.earny.ui.theme.EarnyInput
-import com.aim.earny.ui.theme.EarnySurface
-import com.aim.earny.ui.theme.Gold
-import com.aim.earny.ui.theme.GradBlueCyan
-import com.aim.earny.ui.theme.GradGoldOrange
-import com.aim.earny.ui.theme.GradGreenTeal
-import com.aim.earny.ui.theme.GradOrangeRed
-import com.aim.earny.ui.theme.GradPurplePink
-import com.aim.earny.ui.theme.TextWhite
-import com.aim.earny.ui.theme.TextWhite40
-import com.aim.earny.ui.theme.TextWhite60
+import com.aim.earny.ui.theme.*
 import com.aim.earny.vm.ProfileTab
 import com.aim.earny.vm.ProfileViewModel
 
 @Composable
 fun ProfileScreen(
     onSignOut: () -> Unit,
+    onEditProfile: () -> Unit,
+    onAddFriends: () -> Unit,
     targetUid: String? = null,
     vm: ProfileViewModel = viewModel()
 ) {
-    // Load once per targetUid — safe
-    LaunchedEffect(targetUid) {
-        runCatching { vm.load(targetUid) }
-    }
+    LaunchedEffect(targetUid) { runCatching { vm.load(targetUid) } }
 
     val profile by vm.profile.collectAsStateWithLifecycle()
     val videos by vm.videos.collectAsStateWithLifecycle()
@@ -105,12 +74,14 @@ fun ProfileScreen(
     val isOwn by vm.isOwnProfile.collectAsStateWithLifecycle()
     val isFollowing by vm.isFollowing.collectAsStateWithLifecycle()
 
+    val ctx = LocalContext.current
     var currentTab by remember { mutableStateOf(ProfileTab.VIDEOS) }
 
     Column(Modifier.fillMaxSize().background(EarnyBlack)) {
 
         ProfileTopBar(
             username = profile?.username.orEmpty(),
+            onAddFriends = onAddFriends,
             onSignOut = onSignOut
         )
 
@@ -135,17 +106,28 @@ fun ProfileScreen(
                 verticalArrangement = Arrangement.spacedBy(2.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
-                // Header — full width
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     ProfileHeader(
                         profile = p,
                         isOwn = isOwn,
                         isFollowing = isFollowing,
+                        onEdit = onEditProfile,
+                        onShare = {
+                            val url = "https://earny.app/@" +
+                                    p.username.ifBlank { p.uid }
+                            val share = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_TEXT,
+                                    "Check out @${p.username.ifBlank { "user" }} on Earny!\n$url")
+                            }
+                            ctx.startActivity(
+                                Intent.createChooser(share, "Share profile")
+                            )
+                        },
                         onFollow = { vm.toggleFollow() }
                     )
                 }
 
-                // Tabs — full width
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     ProfileTabs(
                         current = currentTab,
@@ -154,15 +136,12 @@ fun ProfileScreen(
                     )
                 }
 
-                // Content
                 if (list.isEmpty()) {
                     item(span = { GridItemSpan(maxLineSpan) }) {
                         EmptyTab(tab = currentTab, isOwn = isOwn)
                     }
                 } else {
-                    items(list) { v ->
-                        VideoTile(video = v)
-                    }
+                    items(list) { v -> VideoTile(video = v) }
                 }
             }
         }
@@ -172,6 +151,7 @@ fun ProfileScreen(
 @Composable
 private fun ProfileTopBar(
     username: String,
+    onAddFriends: () -> Unit,
     onSignOut: () -> Unit
 ) {
     Row(
@@ -191,9 +171,14 @@ private fun ProfileTopBar(
         Spacer(Modifier.weight(1f))
 
         Icon(
-            Icons.Filled.PersonAdd, "add",
+            Icons.Filled.PersonAdd, "add-friends",
             tint = TextWhite,
-            modifier = Modifier.size(24.dp)
+            modifier = Modifier
+                .size(26.dp)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null, onClick = onAddFriends
+                )
         )
         Spacer(Modifier.width(14.dp))
         Icon(
@@ -203,8 +188,7 @@ private fun ProfileTopBar(
                 .size(24.dp)
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = onSignOut
+                    indication = null, onClick = onSignOut
                 )
         )
     }
@@ -215,13 +199,14 @@ private fun ProfileHeader(
     profile: UserProfile,
     isOwn: Boolean,
     isFollowing: Boolean,
+    onEdit: () -> Unit,
+    onShare: () -> Unit,
     onFollow: () -> Unit
 ) {
     Column(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // Avatar with SafeAvatar — no resource loading
         Box(contentAlignment = Alignment.BottomEnd) {
             SafeAvatar(
                 name = profile.username.ifBlank {
@@ -233,7 +218,11 @@ private fun ProfileHeader(
                 Modifier
                     .size(26.dp)
                     .background(Gold, CircleShape)
-                    .border(3.dp, EarnyBlack, CircleShape),
+                    .border(3.dp, EarnyBlack, CircleShape)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null, onClick = onEdit
+                    ),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
@@ -278,8 +267,8 @@ private fun ProfileHeader(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                SmallOutlineButton("Edit profile", Modifier.weight(1f)) {}
-                SmallOutlineButton("Share profile", Modifier.weight(1f)) {}
+                SmallOutlineButton("Edit profile", Modifier.weight(1f), onEdit)
+                SmallOutlineButton("Share profile", Modifier.weight(1f), onShare)
             }
         } else {
             Row(
@@ -352,8 +341,7 @@ private fun SmallOutlineButton(
             .border(1.dp, EarnyBorder, RoundedCornerShape(8.dp))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = onClick
+                indication = null, onClick = onClick
             ),
         contentAlignment = Alignment.Center
     ) {
@@ -415,8 +403,7 @@ private fun TabItem(
             .height(44.dp)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = onClick
+                indication = null, onClick = onClick
             ),
         contentAlignment = Alignment.Center
     ) {

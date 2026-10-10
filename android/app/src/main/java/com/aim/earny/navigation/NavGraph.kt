@@ -12,6 +12,8 @@ import com.aim.earny.ui.screens.auth.VerifyEmailScreen
 import com.aim.earny.ui.screens.main.MainScaffold
 import com.aim.earny.ui.screens.onboard.OnboardingScreen
 import com.aim.earny.ui.screens.onboard.SplashScreen
+import com.aim.earny.ui.screens.profile.AddFriendsScreen
+import com.aim.earny.ui.screens.profile.EditProfileScreen
 import com.google.firebase.auth.FirebaseAuth
 
 @Composable
@@ -93,27 +95,29 @@ fun EarnyNavGraph(startRoute: String, onSignedOut: () -> Unit) {
             )
         }
 
+        composable(Routes.EDIT_PROFILE) {
+            EditProfileScreen(
+                onBack = { nav.popBackStack() },
+                onSaved = { nav.popBackStack() }
+            )
+        }
+
+        composable(Routes.ADD_FRIENDS) {
+            AddFriendsScreen(onBack = { nav.popBackStack() })
+        }
+
         composable(Routes.MAIN) {
-            MainScaffold(onSignOut = {
-                // SAFE ORDER: navigate first, sign out after
-                // This avoids "no destination" crash when the back stack clears
-                val navOk = runCatching {
+            MainScaffold(
+                onSignOut = {
+                    FirebaseAuth.getInstance().signOut()
+                    onSignedOut()
                     nav.navigate(Routes.LOGIN) {
                         popUpTo(Routes.MAIN) { inclusive = true }
-                        launchSingleTop = true
                     }
-                }.isSuccess
-
-                // If for some reason navigation failed, still sign out
-                // (the app will just sit on Main until user taps again)
-                if (navOk) {
-                    FirebaseAuth.getInstance().signOut()
-                    onSignedOut()
-                } else {
-                    FirebaseAuth.getInstance().signOut()
-                    onSignedOut()
-                }
-            })
+                },
+                onEditProfile = { nav.navigate(Routes.EDIT_PROFILE) },
+                onAddFriends = { nav.navigate(Routes.ADD_FRIENDS) }
+            )
         }
     }
 }
