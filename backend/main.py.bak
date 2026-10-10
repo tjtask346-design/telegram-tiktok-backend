@@ -8,7 +8,7 @@ from fastapi import (
     Response,
     FastAPI, UploadFile, File, Form, Header, HTTPException, Request,
 )
-from fastapi.responses import StreamingResponse, Response
+from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 import firebase_admin
 from firebase_admin import credentials, firestore
@@ -126,8 +126,20 @@ async def upload(
 
 @app.api_route("/stream/{msg_id}", methods=["GET", "HEAD"])
 async def stream(msg_id: int, request: Request):
-    """Stream video. Full-loads small videos (<50MB) into memory for
-    reliable Range handling, streams larger ones."""
+    # HEAD requests: return headers only, no body
+    if request.method == "HEAD":
+        info = await get_video_info(msg_id)
+        if not info:
+            raise HTTPException(404, "Video not found")
+        return Response(
+            content=b"",
+            media_type=info["mime"],
+            headers={
+                "Accept-Ranges": "bytes",
+                "Content-Length": str(info["size"]),
+                "Cache-Control": "public, max-age=86400",
+            },
+        )
     info = await get_video_info(msg_id)
     if not info:
         raise HTTPException(404, "Video not found")
@@ -136,67 +148,6 @@ async def stream(msg_id: int, request: Request):
     mime = info["mime"]
     range_header = request.headers.get("range")
 
-    # ---- HEAD request ----
-    if request.method == "HEAD":
-        return Response(
-            content=b"",
-            media_type=mime,
-            headers={
-                "Accept-Ranges": "bytes",
-                "Content-Length": str(size),
-                "Cache-Control": "public, max-age=86400",
-            },
-        )
-
-    # ---- Small file: buffer in memory ----
-    if size < 50 * 1024 * 1024:
-        log.info(f"/stream/{msg_id} buffering {size} bytes")
-        buf = bytearray()
-        async for chunk in stream_video(msg_id, offset=0):
-            buf.extend(chunk)
-        log.info(f"/stream/{msg_id} buffered {len(buf)} bytes")
-
-        # No Range header → full response
-        if not range_header:
-            return Response(
-                content=bytes(buf),
-                media_type=mime,
-                headers={
-                    "Accept-Ranges": "bytes",
-                    "Content-Length": str(len(buf)),
-                    "Cache-Control": "public, max-age=86400",
-                },
-            )
-
-        # Parse Range: bytes=start-end
-        try:
-            rng = range_header.replace("bytes=", "").split("-")
-            start = int(rng[0]) if rng[0] else 0
-            end = int(rng[1]) if len(rng) > 1 and rng[1] else len(buf) - 1
-        except Exception as e:
-            log.warning(f"Bad range {range_header}: {e}")
-            raise HTTPException(416, "Bad range")
-
-        if start >= len(buf) or end >= len(buf) or start > end:
-            raise HTTPException(416, f"Range {start}-{end} out of bounds for {len(buf)}")
-
-        chunk = bytes(buf[start:end + 1])
-        log.info(f"/stream/{msg_id} serving range {start}-{end} ({len(chunk)} bytes)")
-        return Response(
-            content=chunk,
-            status_code=206,
-            media_type=mime,
-            headers={
-                "Content-Range": f"bytes {start}-{end}/{len(buf)}",
-                "Accept-Ranges": "bytes",
-                "Content-Length": str(len(chunk)),
-                "Cache-Control": "public, max-age=86400",
-            },
-        )
-
-    # ---- Large file: stream with proper Range ----
-    log.info(f"/stream/{msg_id} streaming {size} bytes (large)")
-
     if range_header:
         try:
             rng = range_header.replace("bytes=", "").split("-")
@@ -204,10 +155,8 @@ async def stream(msg_id: int, request: Request):
             end = int(rng[1]) if len(rng) > 1 and rng[1] else size - 1
         except Exception:
             raise HTTPException(416, "Bad range")
-
         if start >= size or end >= size or start > end:
             raise HTTPException(416, "Range out of bounds")
-
         length = end - start + 1
 
         async def gen():
@@ -215,11 +164,9 @@ async def stream(msg_id: int, request: Request):
                 yield chunk
 
         return StreamingResponse(
-            gen(),
-            status_code=206,
-            media_type=mime,
+            gen(), status_code=206, media_type=mime,
             headers={
-                "Content-Range": f"bytes {start}-{end}/{size}",
+                "Content-Range": "bytes %s-%s/%s" % (start, end, size),
                 "Accept-Ranges": "bytes",
                 "Content-Length": str(length),
                 "Cache-Control": "public, max-age=86400",
@@ -231,14 +178,14 @@ async def stream(msg_id: int, request: Request):
             yield chunk
 
     return StreamingResponse(
-        gen_full(),
-        media_type=mime,
+        gen_full(), media_type=mime,
         headers={
             "Accept-Ranges": "bytes",
             "Content-Length": str(size),
             "Cache-Control": "public, max-age=86400",
         },
     )
+
 
 @app.post("/view/{video_id}")
 async def increment_view(video_id: str, authorization: str = Header(...)):
