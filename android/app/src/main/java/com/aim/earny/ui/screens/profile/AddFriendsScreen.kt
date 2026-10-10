@@ -23,23 +23,27 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aim.earny.data.DocumentMapper
+import com.aim.earny.data.FollowRepository
 import com.aim.earny.data.UserProfile
 import com.aim.earny.data.formatCount
 import com.aim.earny.ui.components.SafeAvatar
 import com.aim.earny.ui.theme.*
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
 @Composable
 fun AddFriendsScreen(onBack: () -> Unit) {
     val db = remember { FirebaseFirestore.getInstance() }
+    val followRepo = remember { FollowRepository() }
     val me = FirebaseAuth.getInstance().currentUser?.uid
+    val scope = rememberCoroutineScope()
 
     var users by remember { mutableStateOf<List<UserProfile>>(emptyList()) }
-    var following by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var followingIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var loading by remember { mutableStateOf(true) }
+    var busy by remember { mutableStateOf<Set<String>>(emptySet()) }
 
     LaunchedEffect(me) {
         runCatching {
@@ -48,6 +52,14 @@ fun AddFriendsScreen(onBack: () -> Unit) {
                 .map { DocumentMapper.user(it) }
                 .filter { it.uid != me }
                 .sortedByDescending { it.followers }
+
+            // Load my existing follows
+            val followsSnap = db.collection("follows")
+                .whereEqualTo("follower", me ?: "")
+                .get().await()
+            followingIds = followsSnap.documents
+                .mapNotNull { it.getString("followee") }
+                .toSet()
         }
         loading = false
     }
@@ -83,9 +95,8 @@ fun AddFriendsScreen(onBack: () -> Unit) {
                 verticalArrangement = Arrangement.Center
             ) {
                 Box(
-                    Modifier.size(72.dp).clip(
-                        RoundedCornerShape(24.dp)
-                    ).background(Gold.copy(alpha = 0.12f)),
+                    Modifier.size(72.dp).clip(RoundedCornerShape(24.dp))
+                        .background(Gold.copy(alpha = 0.12f)),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
@@ -110,22 +121,40 @@ fun AddFriendsScreen(onBack: () -> Unit) {
                 items(users) { user ->
                     UserRow(
                         user = user,
-                        isFollowing = following.contains(user.uid),
+                        isFollowing = followingIds.contains(user.uid),
+                        isBusy = busy.contains(user.uid),
                         onToggle = {
+                            if (me == null) return@UserRow
                             val uid = user.uid
-                            val nowFollowing = !following.contains(uid)
-                            following = if (nowFollowing)
-                                following + uid else following - uid
-                            // Fire-and-forget updates
-                            if (me != null) {
-                                db.collection("users").document(uid).update(
-                                    "followers",
-                                    FieldValue.increment(if (nowFollowing) 1 else -1)
-                                )
-                                db.collection("users").document(me).update(
-                                    "following",
-                                    FieldValue.increment(if (nowFollowing) 1 else -1)
-                                )
+                            // Optimistic UI
+                            val wasFollowing = followingIds.contains(uid)
+                            followingIds = if (wasFollowing)
+                                followingIds - uid else followingIds + uid
+                            busy = busy + uid
+
+                            scope.launch {
+                                try {
+                                    val actual = followRepo.toggleFollow(uid)
+                                    // Reconcile with actual
+                                    followingIds = if (actual)
+                                        followingIds + uid else followingIds - uid
+                                    // Update local follower count for display
+                                    users = users.map { u ->
+                                        if (u.uid == uid) {
+                                            u.copy(
+                                                followers = (u.followers +
+                                                    (if (actual) 1 else -1))
+                                                    .coerceAtLeast(0)
+                                            )
+                                        } else u
+                                    }
+                                } catch (_: Exception) {
+                                    // Revert on failure
+                                    followingIds = if (wasFollowing)
+                                        followingIds + uid else followingIds - uid
+                                } finally {
+                                    busy = busy - uid
+                                }
                             }
                         }
                     )
@@ -139,6 +168,7 @@ fun AddFriendsScreen(onBack: () -> Unit) {
 private fun UserRow(
     user: UserProfile,
     isFollowing: Boolean,
+    isBusy: Boolean,
     onToggle: () -> Unit
 ) {
     Row(
@@ -154,7 +184,7 @@ private fun UserRow(
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
             Text(
-                user.username.ifBlank { user.fullName.ifBlank { "user" } },
+                "@" + user.username.ifBlank { user.fullName.ifBlank { "user" } },
                 color = TextWhite, fontSize = 15.sp, fontWeight = FontWeight.SemiBold
             )
             Text(
@@ -166,17 +196,23 @@ private fun UserRow(
             Modifier
                 .clip(RoundedCornerShape(100.dp))
                 .background(if (isFollowing) EarnySurface else Gold)
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null, onClick = onToggle
-                )
-                .padding(horizontal = 18.dp, vertical = 8.dp)
+                .clickable(enabled = !isBusy) { onToggle() }
+                .padding(horizontal = 18.dp, vertical = 8.dp),
+            contentAlignment = Alignment.Center
         ) {
-            Text(
-                if (isFollowing) "Following" else "Follow",
-                color = if (isFollowing) TextWhite else EarnyBlack,
-                fontSize = 12.sp, fontWeight = FontWeight.Bold
-            )
+            if (isBusy) {
+                CircularProgressIndicator(
+                    color = if (isFollowing) TextWhite else EarnyBlack,
+                    strokeWidth = 2.dp,
+                    modifier = Modifier.size(14.dp)
+                )
+            } else {
+                Text(
+                    if (isFollowing) "Following" else "Follow",
+                    color = if (isFollowing) TextWhite else EarnyBlack,
+                    fontSize = 12.sp, fontWeight = FontWeight.Bold
+                )
+            }
         }
     }
 }

@@ -3,6 +3,7 @@ package com.aim.earny.vm
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.aim.earny.data.DocumentMapper
+import com.aim.earny.data.FollowRepository
 import com.aim.earny.data.UserProfile
 import com.aim.earny.data.Video
 import com.google.firebase.auth.FirebaseAuth
@@ -19,6 +20,7 @@ class ProfileViewModel : ViewModel() {
 
     private val db = FirebaseFirestore.getInstance()
     private val auth = FirebaseAuth.getInstance()
+    private val followRepo = FollowRepository(auth, db)
 
     private val _profile = MutableStateFlow<UserProfile?>(null)
     val profile = _profile.asStateFlow()
@@ -85,6 +87,16 @@ class ProfileViewModel : ViewModel() {
             }
 
             _liked.value = emptyList()
+
+            // Check follow state if viewing someone else
+            if (!_isOwnProfile.value && currentTargetUid != null) {
+                _isFollowing.value = runCatching {
+                    followRepo.isFollowing(currentTargetUid!!)
+                }.getOrDefault(false)
+            } else {
+                _isFollowing.value = false
+            }
+
             _loading.value = false
         }
     }
@@ -93,19 +105,19 @@ class ProfileViewModel : ViewModel() {
         val target = currentTargetUid ?: return
         val me = auth.currentUser?.uid ?: return
         if (target == me) return
+
         viewModelScope.launch {
-            val nowFollowing = !_isFollowing.value
-            _isFollowing.value = nowFollowing
-            runCatching {
-                db.collection("users").document(target).update(
-                    "followers",
-                    FieldValue.increment(if (nowFollowing) 1 else -1)
-                ).await()
-                db.collection("users").document(me).update(
-                    "following",
-                    FieldValue.increment(if (nowFollowing) 1 else -1)
-                ).await()
-            }.onFailure { _isFollowing.value = !nowFollowing }
+            val optimistic = !_isFollowing.value
+            _isFollowing.value = optimistic
+            try {
+                val actual = followRepo.toggleFollow(target)
+                _isFollowing.value = actual
+                // Refresh counters on target and self
+                load(target)
+            } catch (e: Exception) {
+                // Revert on failure
+                _isFollowing.value = !optimistic
+            }
         }
     }
 }
