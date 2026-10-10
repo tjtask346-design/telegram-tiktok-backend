@@ -291,29 +291,12 @@ private fun ProfileHeader(
 
         Spacer(Modifier.height(14.dp))
 
-        if (profile.bio.isNotBlank()) {
-            Text(
-                profile.bio,
-                color = TextWhite, fontSize = 13.sp,
-                textAlign = TextAlign.Center, lineHeight = 18.sp,
-                modifier = Modifier.fillMaxWidth()
+        if (profile.bio.isNotBlank() || profile.link.isNotBlank()) {
+            com.aim.earny.ui.screens.profile.BioRenderer(
+                bio = profile.bio,
+                link = profile.link
             )
             Spacer(Modifier.height(6.dp))
-        }
-
-        if (profile.link.isNotBlank()) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    Icons.Filled.Link, null,
-                    tint = TextWhite, modifier = Modifier.size(14.dp)
-                )
-                Spacer(Modifier.width(4.dp))
-                Text(
-                    profile.link,
-                    color = Color(0xFF6BA6FF), fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
         }
 
         Spacer(Modifier.height(20.dp))
