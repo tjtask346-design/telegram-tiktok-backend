@@ -477,7 +477,7 @@ private fun VideoPage(
 
         Column(
             Modifier.align(Alignment.BottomStart)
-                .padding(start = 16.dp, bottom = 90.dp, end = 80.dp)
+                .padding(start = 16.dp, bottom = 16.dp, end = 80.dp)
         ) {
             val displayName = when {
                 video.uploaderHandle.isNotBlank() -> "@" + video.uploaderHandle
@@ -501,7 +501,7 @@ private fun VideoPage(
         }
 
         Column(
-            Modifier.align(Alignment.BottomEnd).padding(end = 12.dp, bottom = 90.dp),
+            Modifier.align(Alignment.BottomEnd).padding(end = 12.dp, bottom = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {

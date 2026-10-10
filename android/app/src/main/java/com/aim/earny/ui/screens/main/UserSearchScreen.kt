@@ -68,7 +68,7 @@ fun UserSearchScreen(
         }
         touched = true
         searching = true
-        delay(400)
+        delay(200)
         runCatching {
             if (tab == 0) {
                 users = userRepo.search(q.removePrefix("@"))

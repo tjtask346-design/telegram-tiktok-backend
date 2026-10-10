@@ -1,5 +1,8 @@
 package com.aim.earny.ui.screens.profile
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -16,11 +19,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
@@ -40,11 +45,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.aim.earny.BuildConfig
+import com.aim.earny.data.ApiService
+import com.aim.earny.data.ProfilePicRepository
 import com.aim.earny.ui.components.SafeAvatar
 import com.aim.earny.ui.theme.EarnyBlack
 import com.aim.earny.ui.theme.EarnyBorder
@@ -59,6 +68,8 @@ import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import retrofit2.Retrofit
+import retrofit2.converter.gson.GsonConverterFactory
 
 private enum class NameState { Idle, Checking, Available, Taken, Invalid }
 
@@ -70,7 +81,17 @@ fun EditProfileScreen(
     val auth = remember { FirebaseAuth.getInstance() }
     val db = remember { FirebaseFirestore.getInstance() }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     val uid = auth.currentUser?.uid
+
+    val picRepo = remember {
+        val api = Retrofit.Builder()
+            .baseUrl(BuildConfig.API_BASE.trimEnd('/') + "/")
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+            .create(ApiService::class.java)
+        ProfilePicRepository(api)
+    }
 
     var firstName by remember { mutableStateOf("") }
     var lastName by remember { mutableStateOf("") }
@@ -81,8 +102,29 @@ fun EditProfileScreen(
     var picMsgId by remember { mutableStateOf(0L) }
     var loading by remember { mutableStateOf(true) }
     var saving by remember { mutableStateOf(false) }
+    var uploadingPic by remember { mutableStateOf(false) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
     var nameState by remember { mutableStateOf(NameState.Idle) }
+
+    // Pic picker
+    val picPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            uploadingPic = true
+            errorMsg = null
+            scope.launch {
+                try {
+                    val newId = picRepo.upload(context, uri)
+                    picMsgId = newId
+                } catch (e: Exception) {
+                    errorMsg = "Pic upload failed: ${e.message}"
+                } finally {
+                    uploadingPic = false
+                }
+            }
+        }
+    }
 
     LaunchedEffect(uid) {
         if (uid == null) {
@@ -172,15 +214,46 @@ fun EditProfileScreen(
                     .padding(horizontal = 24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                SafeAvatar(
-                    name = username.ifBlank { firstName.ifBlank { "?" } },
-                    size = 100.dp,
-                    picMsgId = picMsgId
-                )
+                // Avatar with pic picker
+                Box(contentAlignment = Alignment.BottomEnd) {
+                    SafeAvatar(
+                        name = username.ifBlank { firstName.ifBlank { "?" } },
+                        size = 100.dp,
+                        picMsgId = picMsgId
+                    )
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .background(Gold, CircleShape)
+                            .clickable(
+                                enabled = !uploadingPic,
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null
+                            ) {
+                                picPicker.launch("image/*")
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (uploadingPic) {
+                            CircularProgressIndicator(
+                                color = EarnyBlack,
+                                strokeWidth = 2.dp,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Filled.CameraAlt,
+                                contentDescription = "change pic",
+                                tint = EarnyBlack,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                }
 
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    text = "Profile picture upload coming soon",
+                    text = if (uploadingPic) "Uploading…" else "Tap camera to change photo",
                     color = TextWhite40,
                     fontSize = 11.sp
                 )
@@ -357,7 +430,6 @@ fun EditProfileScreen(
                                                     .delete()
                                                     .await()
                                             } catch (ignore: Exception) {
-                                                // ignore
                                             }
                                         }
                                     }

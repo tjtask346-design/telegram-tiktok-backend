@@ -5,9 +5,11 @@ import android.net.Uri
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
@@ -24,14 +26,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.aim.earny.ui.components.HashtagCaption
 import com.aim.earny.ui.theme.Gold
 import com.aim.earny.ui.theme.TextWhite
-import com.aim.earny.ui.theme.TextWhite60
 
-/**
- * Renders bio text. If bio contains a URL-like substring,
- * splits into: [text before] + [🔗 clickable link]
- */
 @Composable
 fun BioRenderer(
     bio: String,
@@ -40,113 +38,71 @@ fun BioRenderer(
 ) {
     val ctx = LocalContext.current
 
-    val urlRegex = remember {
-        Regex("""(https?://[^\s]+|www\.[^\s]+|[a-z0-9-]+\.[a-z]{2,}(?:/[^\s]*)?)""",
-            RegexOption.IGNORE_CASE)
-    }
+    // If both empty, show nothing but still occupy the composable safely
+    if (bio.isBlank() && link.isBlank()) {
+        Spacer(Modifier.height(0.dp))
+    } else {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            if (bio.isNotBlank()) {
+                if (bio.contains("#")) {
+                    HashtagCaption(
+                        caption = bio,
+                        textColor = TextWhite,
+                        fontSize = 13,
+                        modifier = Modifier.fillMaxWidth(),
+                        onHashtag = onHashtag
+                    )
+                } else {
+                    Text(
+                        text = bio,
+                        color = TextWhite,
+                        fontSize = 13.sp,
+                        textAlign = TextAlign.Center,
+                        lineHeight = 18.sp,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
 
-    val (textPart, urlPart) = remember(bio) {
-        val match = urlRegex.find(bio)
-        if (match != null) {
-            val before = bio.substring(0, match.range.first).trimEnd()
-            val url = match.value
-            before to url
-        } else {
-            bio to ""
-        }
-    }
-
-    androidx.compose.foundation.layout.Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        if (textPart.isNotBlank()) {
-            if (textPart.contains("#")) {
-                com.aim.earny.ui.components.HashtagCaption(
-                    caption = textPart,
-                    textColor = TextWhite,
-                    fontSize = 13,
-                    onHashtag = onHashtag,
+            if (link.isNotBlank()) {
+                Spacer(Modifier.height(6.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
                     modifier = Modifier.fillMaxWidth()
-                )
-            } else {
-                Text(
-                    textPart,
-                    color = TextWhite,
-                    fontSize = 13.sp,
-                    textAlign = TextAlign.Center,
-                    lineHeight = 18.sp
-                )
-            }
-        }
-
-        if (urlPart.isNotBlank()) {
-            Spacer(Modifier.size(4.dp))
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
-            ) {
-                Icon(
-                    Icons.Filled.Link, null,
-                    tint = Gold,
-                    modifier = Modifier.size(14.dp)
-                )
-                Spacer(Modifier.width(4.dp))
-                Text(
-                    urlPart,
-                    color = Gold,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null
-                    ) {
-                        var url = urlPart
-                        if (!url.startsWith("http://") && !url.startsWith("https://")) {
-                            url = "https://$url"
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Link,
+                        contentDescription = null,
+                        tint = Gold,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        text = link,
+                        color = Gold,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) {
+                            var url = link.trim()
+                            if (!url.startsWith("http://") && !url.startsWith("https://")) {
+                                url = "https://$url"
+                            }
+                            try {
+                                ctx.startActivity(
+                                    Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                )
+                            } catch (_: Exception) {
+                            }
                         }
-                        try {
-                            ctx.startActivity(
-                                Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                            )
-                        } catch (_: Exception) {}
-                    }
-                )
-            }
-        }
-
-        // Explicit link field (separate)
-        if (link.isNotBlank() && urlPart.isBlank()) {
-            Spacer(Modifier.size(4.dp))
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
-            ) {
-                Icon(
-                    Icons.Filled.Link, null,
-                    tint = Gold, modifier = Modifier.size(14.dp)
-                )
-                Spacer(Modifier.width(4.dp))
-                Text(
-                    link,
-                    color = Gold,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null
-                    ) {
-                        var url = link
-                        if (!url.startsWith("http://") && !url.startsWith("https://")) {
-                            url = "https://$url"
-                        }
-                        try {
-                            ctx.startActivity(
-                                Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                            )
-                        } catch (_: Exception) {}
-                    }
-                )
+                    )
+                }
             }
         }
     }
