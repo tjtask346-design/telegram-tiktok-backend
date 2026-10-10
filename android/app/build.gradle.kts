@@ -12,8 +12,8 @@ android {
         applicationId = "com.aim.earny"
         minSdk = 24
         targetSdk = 34
-        versionCode = 12
-        versionName = "3.0"
+        versionCode = 13
+        versionName = "3.1"
         buildConfigField("String", "API_BASE", "\"https://telegram-tiktok-backend.onrender.com\"")
         buildConfigField("String", "MAGIC_LINK", "\"https://telegram-tiktok-backend.onrender.com/verified\"")
     }

@@ -33,7 +33,11 @@ import com.aim.earny.ui.theme.TextWhite60
  * splits into: [text before] + [🔗 clickable link]
  */
 @Composable
-fun BioRenderer(bio: String, link: String) {
+fun BioRenderer(
+    bio: String,
+    link: String,
+    onHashtag: (String) -> Unit = {}
+) {
     val ctx = LocalContext.current
 
     val urlRegex = remember {
@@ -57,13 +61,23 @@ fun BioRenderer(bio: String, link: String) {
         modifier = Modifier.fillMaxWidth()
     ) {
         if (textPart.isNotBlank()) {
-            Text(
-                textPart,
-                color = TextWhite,
-                fontSize = 13.sp,
-                textAlign = TextAlign.Center,
-                lineHeight = 18.sp
-            )
+            if (textPart.contains("#")) {
+                com.aim.earny.ui.components.HashtagCaption(
+                    caption = textPart,
+                    textColor = TextWhite,
+                    fontSize = 13,
+                    onHashtag = onHashtag,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            } else {
+                Text(
+                    textPart,
+                    color = TextWhite,
+                    fontSize = 13.sp,
+                    textAlign = TextAlign.Center,
+                    lineHeight = 18.sp
+                )
+            }
         }
 
         if (urlPart.isNotBlank()) {

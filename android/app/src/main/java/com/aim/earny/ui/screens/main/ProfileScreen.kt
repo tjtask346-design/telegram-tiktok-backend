@@ -68,6 +68,7 @@ fun ProfileScreen(
     onEditProfile: () -> Unit,
     onAddFriends: () -> Unit,
     onOpenSettings: () -> Unit = {},
+    onOpenHashtag: (String) -> Unit = {},
     targetUid: String? = null,
     vm: ProfileViewModel = viewModel()
 ) {
@@ -603,7 +604,8 @@ private fun ProfileHeader(
         if (profile.bio.isNotBlank() || profile.link.isNotBlank()) {
             com.aim.earny.ui.screens.profile.BioRenderer(
                 bio = profile.bio,
-                link = profile.link
+                link = profile.link,
+                onHashtag = onOpenHashtag
             )
             Spacer(Modifier.height(6.dp))
         }

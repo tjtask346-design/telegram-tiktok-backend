@@ -28,6 +28,15 @@ object DocumentMapper {
         }
     }
 
+    @Suppress("UNCHECKED_CAST")
+    private fun DocumentSnapshot.listOfStrings(key: String): List<String> {
+        val v = runCatching { get(key) }.getOrNull() ?: return emptyList()
+        return when (v) {
+            is List<*> -> v.mapNotNull { (it as? String)?.trim() }.filter { it.isNotBlank() }
+            else -> emptyList()
+        }
+    }
+
     private fun DocumentSnapshot.timestampMs(key: String): Long {
         val v = runCatching { get(key) }.getOrNull() ?: return 0L
         return when (v) {
@@ -53,7 +62,8 @@ object DocumentMapper {
         isDraft = doc.bool("isDraft"),
         isRepost = doc.bool("isRepost"),
         createdAtMs = doc.timestampMs("createdAt"),
-        thumbB64 = doc.str("thumbB64")
+        thumbB64 = doc.str("thumbB64"),
+        hashtags = doc.listOfStrings("hashtags")
     )
 
     fun video(doc: QueryDocumentSnapshot): Video = video(doc as DocumentSnapshot)

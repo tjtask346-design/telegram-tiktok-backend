@@ -15,7 +15,8 @@ data class Video(
     val isDraft: Boolean = false,
     val isRepost: Boolean = false,
     val createdAtMs: Long = 0L,
-    val thumbB64: String = ""
+    val thumbB64: String = "",
+    val hashtags: List<String> = emptyList()
 )
 
 data class UploadResponse(

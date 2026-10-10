@@ -1,3 +1,4 @@
+import re
 import base64
 import os
 import os
@@ -133,6 +134,14 @@ async def upload(
         log.warning(f"profile lookup failed: {e}")
 
     doc = db.collection("videos").document()
+    video_id = doc.id
+
+    # ---- Extract hashtags ----
+    tags = list(set(
+        t.lower() for t in re.findall(r"#([A-Za-z0-9_]+)", caption or "")
+    ))[:10]
+    log.info(f"hashtags={tags}")
+
     doc.set({
         "uploader": uid,
         "uploaderName": uploader_name,
@@ -144,13 +153,33 @@ async def upload(
         "width": width,
         "height": height,
         "thumbB64": thumb_b64 if 'thumb_b64' in dir() else "",
+        "hashtags": tags,
         "likes": 0,
         "views": 0,
         "comments": 0,
         "createdAt": firestore.SERVER_TIMESTAMP,
     })
 
-    return {"videoId": doc.id, "msgId": msg_id, "size": total}
+    # ---- Update hashtag aggregates ----
+    for tag in tags:
+        try:
+            db.collection("hashtags").document(tag).set(
+                {
+                    "tag": tag,
+                    "videoCount": firestore.Increment(1),
+                    "updatedAt": firestore.SERVER_TIMESTAMP,
+                },
+                merge=True,
+            )
+            db.collection("hashtags").document(tag) \
+                .collection("posts").document(video_id).set({
+                    "videoId": video_id,
+                    "createdAt": firestore.SERVER_TIMESTAMP,
+                })
+        except Exception as e:
+            log.warning(f"hashtag write failed for {tag}: {e}")
+
+    return {"videoId": video_id, "msgId": msg_id, "size": total}
 
 
 @app.api_route("/stream/{msg_id}", methods=["GET", "HEAD"])
@@ -575,4 +604,21 @@ async def delete_account(authorization: str = Header(...)):
 
     log.info(f"delete-account done for {uid}")
     return {"ok": True}
+
+@app.get("/hashtags/trending")
+async def trending_hashtags(limit: int = 20):
+    try:
+        snap = db.collection("hashtags") \
+            .orderBy("videoCount", direction=firestore.Query.DESCENDING) \
+            .limit(int(limit)) \
+            .stream()
+        return {"items": [
+            {
+                "tag": d.get("tag"),
+                "videoCount": d.get("videoCount", 0),
+            } for d in snap
+        ]}
+    except Exception as e:
+        log.warning(f"trending failed: {e}")
+        return {"items": []}
 

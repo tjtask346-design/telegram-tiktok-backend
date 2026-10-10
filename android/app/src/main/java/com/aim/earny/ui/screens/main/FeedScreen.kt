@@ -48,6 +48,7 @@ import com.google.firebase.auth.FirebaseAuth
 fun FeedScreen(
     onOpenProfile: (String) -> Unit = {},
     onOpenSearch: () -> Unit = {},
+    onOpenHashtag: (String) -> Unit = {},
     vm: FeedViewModel = viewModel()
 ) {
     val allVideos by vm.videos.collectAsStateWithLifecycle()
@@ -178,7 +179,8 @@ fun FeedScreen(
                         onBecameVisible = { vm.onPageVisible(v) },
                         onOpenProfile = { onOpenProfile(v.uploader) },
                         onOpenComments = { commentsForVideo = v.id },
-                        onLongPress = { actionsForVideo = v }
+                        onLongPress = { actionsForVideo = v },
+                        onOpenHashtag = onOpenHashtag
                     )
                 }
             }
@@ -458,7 +460,8 @@ private fun VideoPage(
     onBecameVisible: () -> Unit,
     onOpenProfile: () -> Unit,
     onOpenComments: () -> Unit,
-    onLongPress: () -> Unit
+    onLongPress: () -> Unit,
+    onOpenHashtag: (String) -> Unit = {}
 ) {
     var burstKey by remember { mutableStateOf(0) }
     val ctx = LocalContext.current
@@ -532,7 +535,10 @@ private fun VideoPage(
             Text(displayName, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
             if (video.caption.isNotBlank()) {
                 Spacer(Modifier.height(6.dp))
-                Text(video.caption, color = Color.White, fontSize = 14.sp)
+                com.aim.earny.ui.components.HashtagCaption(
+                    caption = video.caption,
+                    onHashtag = { tag -> onOpenHashtag(tag) }
+                )
             }
             Spacer(Modifier.height(10.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {

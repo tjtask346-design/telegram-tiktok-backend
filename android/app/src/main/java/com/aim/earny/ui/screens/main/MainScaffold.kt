@@ -36,6 +36,8 @@ fun MainScaffold(onSignOut: () -> Unit) {
     var showOtherProfile by remember { mutableStateOf<String?>(null) }
     var showSearch by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
+    var openHashtag by remember { mutableStateOf<String?>(null) }
+    var playerVideo by remember { mutableStateOf<com.aim.earny.data.Video?>(null) }
 
     // Reactive unread dot
     val db = remember { FirebaseFirestore.getInstance() }
@@ -60,7 +62,8 @@ fun MainScaffold(onSignOut: () -> Unit) {
             composable("feed") {
                 FeedScreen(
                     onOpenProfile = { uid -> showOtherProfile = uid },
-                    onOpenSearch = { showSearch = true }
+                    onOpenSearch = { showSearch = true },
+                    onOpenHashtag = { tag -> openHashtag = tag }
                 )
             }
             composable("discover") { DiscoverScreen(onOpenProfile = { uid -> showOtherProfile = uid }) }
@@ -70,7 +73,8 @@ fun MainScaffold(onSignOut: () -> Unit) {
                     onSignOut = onSignOut,
                     onEditProfile = { showEditProfile = true },
                     onAddFriends = { showAddFriends = true },
-                    onOpenSettings = { showSettings = true }
+                    onOpenSettings = { showSettings = true },
+                    onOpenHashtag = { tag -> openHashtag = tag }
                 )
             }
         }
@@ -134,6 +138,23 @@ fun MainScaffold(onSignOut: () -> Unit) {
                     }
                 )
             }
+        }
+
+        openHashtag?.let { tag ->
+            Box(Modifier.fillMaxSize().background(EarnyBlack)) {
+                HashtagFeedScreen(
+                    tag = tag,
+                    onBack = { openHashtag = null },
+                    onOpenVideo = { v -> playerVideo = v }
+                )
+            }
+        }
+
+        playerVideo?.let { v ->
+            VideoPlayerOverlay(
+                video = v,
+                onClose = { playerVideo = null }
+            )
         }
 
         if (showSettings) {
