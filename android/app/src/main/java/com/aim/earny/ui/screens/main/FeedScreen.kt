@@ -43,6 +43,7 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.aim.earny.BuildConfig
 import com.aim.earny.data.Video
+import com.aim.earny.data.formatCount
 import com.aim.earny.ui.theme.*
 import com.aim.earny.vm.FeedViewModel
 
@@ -73,6 +74,7 @@ fun FeedScreen(vm: FeedViewModel = viewModel()) {
     val videos by vm.videos.collectAsStateWithLifecycle()
     val loading by vm.loading.collectAsStateWithLifecycle()
     val error by vm.error.collectAsStateWithLifecycle()
+    val likedIds by vm.likedIds.collectAsStateWithLifecycle()
     var tab by remember { mutableStateOf(1) }
 
     LaunchedEffect(Unit) { vm.load() }
@@ -152,10 +154,14 @@ fun FeedScreen(vm: FeedViewModel = viewModel()) {
                     state = pager,
                     modifier = Modifier.fillMaxSize()
                 ) { page ->
+                    val v = videos[page]
                     VideoPage(
-                        video = videos[page],
+                        video = v,
                         isCurrentPage = page == currentIndex,
-                        exo = exo
+                        exo = exo,
+                        isLiked = likedIds.contains(v.id),
+                        onToggleLike = { vm.toggleLike(v) },
+                        onBecameVisible = { vm.onPageVisible(v) }
                     )
                 }
             }
@@ -205,12 +211,19 @@ private fun Tab(text: String, selected: Boolean, onClick: () -> Unit) {
 private fun VideoPage(
     video: Video,
     isCurrentPage: Boolean,
-    exo: ExoPlayer
+    exo: ExoPlayer,
+    isLiked: Boolean,
+    onToggleLike: () -> Unit,
+    onBecameVisible: () -> Unit
 ) {
-    var liked by remember { mutableStateOf(false) }
     var following by remember { mutableStateOf(false) }
     var burstKey by remember { mutableStateOf(0) }
     val ctx = LocalContext.current
+
+    // Notify VM when this page becomes the active one
+    LaunchedEffect(isCurrentPage) {
+        if (isCurrentPage) onBecameVisible()
+    }
 
     Box(
         Modifier.fillMaxSize().background(Color.Black)
@@ -218,7 +231,7 @@ private fun VideoPage(
                 if (!isCurrentPage) return@pointerInput
                 detectTapGestures(
                     onDoubleTap = {
-                        if (!liked) liked = true
+                        if (!isLiked) onToggleLike()
                         burstKey++
                     },
                     onTap = {
@@ -323,12 +336,12 @@ private fun VideoPage(
             }
 
             ActionItem(
-                icon = if (liked) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                count = (video.likes + if (liked) 1 else 0).toString(),
-                tint = if (liked) HeartRed else Color.White
-            ) { if (!liked) liked = true }
+                icon = if (isLiked) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                count = formatCount(video.likes),
+                tint = if (isLiked) HeartRed else Color.White
+            ) { onToggleLike() }
 
-            ActionItem(Icons.Filled.ChatBubble, video.comments.toString()) {}
+            ActionItem(Icons.Filled.ChatBubble, formatCount(video.comments)) {}
             ActionItem(Icons.Filled.Bookmark, "0") {}
             ActionItem(Icons.Filled.Share, "0") {
                 Toast.makeText(ctx, "Shared", Toast.LENGTH_SHORT).show()

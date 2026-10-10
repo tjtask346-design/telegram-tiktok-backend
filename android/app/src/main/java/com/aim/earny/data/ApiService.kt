@@ -6,6 +6,7 @@ import retrofit2.http.Header
 import retrofit2.http.Multipart
 import retrofit2.http.POST
 import retrofit2.http.Part
+import retrofit2.http.Path
 
 interface ApiService {
 
@@ -19,4 +20,10 @@ interface ApiService {
         @Part("width") width: RequestBody,
         @Part("height") height: RequestBody
     ): UploadResponse
+
+    @POST("view/{videoId}")
+    suspend fun incrementView(
+        @Header("Authorization") auth: String,
+        @Path("videoId") videoId: String
+    )
 }
