@@ -126,16 +126,17 @@ async def upload(
 
 @app.api_route("/stream/{msg_id}", methods=["GET", "HEAD"])
 async def stream(msg_id: int, request: Request):
-    """True Range streaming — no full buffer.
-    Each ExoPlayer Range request gets exactly what it asked for."""
+    """Stream video. Full-loads small videos (<50MB) into memory for
+    reliable Range handling, streams larger ones."""
     info = await get_video_info(msg_id)
     if not info:
         raise HTTPException(404, "Video not found")
 
     size = info["size"]
     mime = info["mime"]
+    range_header = request.headers.get("range")
 
-    # HEAD — no body
+    # ---- HEAD request ----
     if request.method == "HEAD":
         return Response(
             content=b"",
@@ -147,65 +148,94 @@ async def stream(msg_id: int, request: Request):
             },
         )
 
-    range_header = request.headers.get("range")
+    # ---- Small file: buffer in memory ----
+    if size < 50 * 1024 * 1024:
+        log.info(f"/stream/{msg_id} buffering {size} bytes")
+        buf = bytearray()
+        async for chunk in stream_video(msg_id, offset=0):
+            buf.extend(chunk)
+        log.info(f"/stream/{msg_id} buffered {len(buf)} bytes")
 
-    # ---- No Range: return first 5 MB max (fast close for Cloudflare) ----
-    if not range_header:
-        cap = min(size, 5 * 1024 * 1024)
-        log.info(f"/stream/{msg_id} no-range, sending first {cap} of {size}")
+        # No Range header → full response
+        if not range_header:
+            return Response(
+                content=bytes(buf),
+                media_type=mime,
+                headers={
+                    "Accept-Ranges": "bytes",
+                    "Content-Length": str(len(buf)),
+                    "Cache-Control": "public, max-age=86400",
+                },
+            )
 
-        async def gen():
-            async for chunk in stream_video(msg_id, offset=0, limit=cap):
-                yield chunk
+        # Parse Range: bytes=start-end
+        try:
+            rng = range_header.replace("bytes=", "").split("-")
+            start = int(rng[0]) if rng[0] else 0
+            end = int(rng[1]) if len(rng) > 1 and rng[1] else len(buf) - 1
+        except Exception as e:
+            log.warning(f"Bad range {range_header}: {e}")
+            raise HTTPException(416, "Bad range")
 
-        return StreamingResponse(
-            gen(),
-            status_code=200,
+        if start >= len(buf) or end >= len(buf) or start > end:
+            raise HTTPException(416, f"Range {start}-{end} out of bounds for {len(buf)}")
+
+        chunk = bytes(buf[start:end + 1])
+        log.info(f"/stream/{msg_id} serving range {start}-{end} ({len(chunk)} bytes)")
+        return Response(
+            content=chunk,
+            status_code=206,
             media_type=mime,
             headers={
+                "Content-Range": f"bytes {start}-{end}/{len(buf)}",
                 "Accept-Ranges": "bytes",
-                "Content-Length": str(cap),
+                "Content-Length": str(len(chunk)),
                 "Cache-Control": "public, max-age=86400",
             },
         )
 
-    # ---- Parse Range: bytes=start-end ----
-    try:
-        rng = range_header.replace("bytes=", "").split("-")
-        start = int(rng[0]) if rng[0] else 0
-        end = int(rng[1]) if len(rng) > 1 and rng[1] else size - 1
-    except Exception as e:
-        log.warning(f"Bad range '{range_header}': {e}")
-        raise HTTPException(416, "Bad Range")
+    # ---- Large file: stream with proper Range ----
+    log.info(f"/stream/{msg_id} streaming {size} bytes (large)")
 
-    if start >= size:
-        raise HTTPException(416, f"Start {start} >= size {size}")
+    if range_header:
+        try:
+            rng = range_header.replace("bytes=", "").split("-")
+            start = int(rng[0]) if rng[0] else 0
+            end = int(rng[1]) if len(rng) > 1 and rng[1] else size - 1
+        except Exception:
+            raise HTTPException(416, "Bad range")
 
-    # Cap end so response finishes quickly (Cloudflare-friendly)
-    # If caller wanted huge chunk, limit to 5 MB
-    requested = end - start + 1
-    if requested > 5 * 1024 * 1024:
-        end = start + (5 * 1024 * 1024) - 1
-        log.info(f"/stream/{msg_id} range capped to 5MB")
+        if start >= size or end >= size or start > end:
+            raise HTTPException(416, "Range out of bounds")
 
-    if end >= size:
-        end = size - 1
+        length = end - start + 1
 
-    length = end - start + 1
-    log.info(f"/stream/{msg_id} serving {start}-{end} ({length} bytes of {size})")
+        async def gen():
+            async for chunk in stream_video(msg_id, offset=start, limit=length):
+                yield chunk
 
-    async def gen_range():
-        async for chunk in stream_video(msg_id, offset=start, limit=length):
+        return StreamingResponse(
+            gen(),
+            status_code=206,
+            media_type=mime,
+            headers={
+                "Content-Range": f"bytes {start}-{end}/{size}",
+                "Accept-Ranges": "bytes",
+                "Content-Length": str(length),
+                "Cache-Control": "public, max-age=86400",
+            },
+        )
+
+    async def gen_full():
+        async for chunk in stream_video(msg_id, offset=0):
             yield chunk
 
     return StreamingResponse(
-        gen_range(),
-        status_code=206,
+        gen_full(),
         media_type=mime,
         headers={
-            "Content-Range": f"bytes {start}-{end}/{size}",
             "Accept-Ranges": "bytes",
-            "Content-Length": str(length),
+            "Content-Length": str(size),
             "Cache-Control": "public, max-age=86400",
         },
     )
