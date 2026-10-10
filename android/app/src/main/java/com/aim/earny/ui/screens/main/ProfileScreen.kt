@@ -113,12 +113,14 @@ fun ProfileScreen(
                         isFollowing = isFollowing,
                         onEdit = onEditProfile,
                         onShare = {
-                            val url = "https://earny.app/@" +
-                                    p.username.ifBlank { p.uid }
+                            val handle = p.username.ifBlank { "" }
+                            val url = if (handle.isBlank()) "https://earny.app"
+                                else "https://earny.app/@$handle"
                             val share = Intent(Intent.ACTION_SEND).apply {
                                 type = "text/plain"
+                                val disp = if (handle.isBlank()) "this creator" else "@$handle"
                                 putExtra(Intent.EXTRA_TEXT,
-                                    "Check out @${p.username.ifBlank { "user" }} on Earny!\n$url")
+                                    "Check out $disp on Earny!\n$url")
                             }
                             ctx.startActivity(
                                 Intent.createChooser(share, "Share profile")

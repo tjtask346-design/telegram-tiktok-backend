@@ -8,7 +8,6 @@ import com.aim.earny.data.Video
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.Query
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -59,22 +58,27 @@ class ProfileViewModel : ViewModel() {
         viewModelScope.launch {
             _loading.value = true
 
-            // Profile — safe mapping, never throws
+            // Profile doc
             runCatching {
                 val doc = db.collection("users").document(uid).get().await()
                 _profile.value = DocumentMapper.user(doc, uid)
             }
 
-            // Videos — safe mapping
+            // Videos — simple query, NO orderBy (avoids composite index)
             runCatching {
                 val snap = db.collection("videos")
                     .whereEqualTo("uploader", uid)
-                    .orderBy("createdAt", Query.Direction.DESCENDING)
-                    .limit(60)
                     .get()
                     .await()
 
-                val all = snap.documents.map { DocumentMapper.video(it) }
+                val all = snap.documents
+                    .map { DocumentMapper.video(it) }
+                    // sort newest first: prefer createdAtMs, fallback to id (Firestore ids are time-based)
+                    .sortedWith(
+                        compareByDescending<Video> { it.createdAtMs }
+                            .thenByDescending { it.id }
+                    )
+
                 _videos.value = all.filter { !it.isPrivate && !it.isDraft && !it.isRepost }
                 _privateVideos.value = all.filter { it.isPrivate || it.isDraft }
                 _reposts.value = all.filter { it.isRepost }
@@ -85,40 +89,10 @@ class ProfileViewModel : ViewModel() {
         }
     }
 
-    fun togglePin(video: Video) {
-        viewModelScope.launch {
-            runCatching {
-                db.collection("videos").document(video.id)
-                    .update("isPinned", !video.isPinned).await()
-                load(currentTargetUid)
-            }
-        }
-    }
-
-    fun togglePrivacy(video: Video) {
-        viewModelScope.launch {
-            runCatching {
-                db.collection("videos").document(video.id)
-                    .update("isPrivate", !video.isPrivate).await()
-                load(currentTargetUid)
-            }
-        }
-    }
-
-    fun deleteVideo(video: Video) {
-        viewModelScope.launch {
-            runCatching {
-                db.collection("videos").document(video.id).delete().await()
-                load(currentTargetUid)
-            }
-        }
-    }
-
     fun toggleFollow() {
         val target = currentTargetUid ?: return
         val me = auth.currentUser?.uid ?: return
         if (target == me) return
-
         viewModelScope.launch {
             val nowFollowing = !_isFollowing.value
             _isFollowing.value = nowFollowing

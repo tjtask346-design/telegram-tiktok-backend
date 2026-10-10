@@ -1,13 +1,9 @@
 package com.aim.earny.data
 
+import com.google.firebase.Timestamp
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.QueryDocumentSnapshot
 
-/**
- * Safe, manual mapping from Firestore documents to Kotlin models.
- * Never uses reflective toObject() — avoids Timestamp/Long/type mismatch
- * crashes across schema evolution.
- */
 object DocumentMapper {
 
     private fun DocumentSnapshot.str(key: String, def: String = ""): String =
@@ -32,6 +28,16 @@ object DocumentMapper {
         }
     }
 
+    private fun DocumentSnapshot.timestampMs(key: String): Long {
+        val v = runCatching { get(key) }.getOrNull() ?: return 0L
+        return when (v) {
+            is Timestamp -> v.seconds * 1000L + (v.nanoseconds / 1_000_000)
+            is Number -> v.toLong()
+            is java.util.Date -> v.time
+            else -> 0L
+        }
+    }
+
     fun video(doc: DocumentSnapshot): Video = Video(
         id = doc.id,
         uploader = doc.str("uploader"),
@@ -45,7 +51,8 @@ object DocumentMapper {
         isPinned = doc.bool("isPinned"),
         isPrivate = doc.bool("isPrivate"),
         isDraft = doc.bool("isDraft"),
-        isRepost = doc.bool("isRepost")
+        isRepost = doc.bool("isRepost"),
+        createdAtMs = doc.timestampMs("createdAt")
     )
 
     fun video(doc: QueryDocumentSnapshot): Video = video(doc as DocumentSnapshot)

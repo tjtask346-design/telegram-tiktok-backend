@@ -1,11 +1,5 @@
 package com.aim.earny.data
 
-/**
- * All models here are plain data classes with primitive types only.
- * Firestore mapping is done manually via DocumentMapper, never via
- * reflective toObject() — this avoids Timestamp/Long mismatch crashes.
- */
-
 data class Video(
     val id: String = "",
     val uploader: String = "",
@@ -19,7 +13,8 @@ data class Video(
     val isPinned: Boolean = false,
     val isPrivate: Boolean = false,
     val isDraft: Boolean = false,
-    val isRepost: Boolean = false
+    val isRepost: Boolean = false,
+    val createdAtMs: Long = 0L
 )
 
 data class UploadResponse(

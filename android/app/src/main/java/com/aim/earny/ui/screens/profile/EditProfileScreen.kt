@@ -11,8 +11,12 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -23,25 +27,30 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.viewmodel.compose.viewModel
-import com.aim.earny.ui.components.EarnyButton
-import com.aim.earny.ui.components.EarnyTextField
 import com.aim.earny.ui.components.SafeAvatar
-import com.aim.earny.ui.theme.*
-import com.aim.earny.vm.AuthViewModel
-import com.aim.earny.vm.UsernameState
+import com.aim.earny.ui.theme.EarnyBlack
+import com.aim.earny.ui.theme.EarnyInput
+import com.aim.earny.ui.theme.Gold
+import com.aim.earny.ui.theme.TextWhite
+import com.aim.earny.ui.theme.TextWhite40
+import com.aim.earny.ui.theme.TextWhite60
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.SetOptions
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+
+private enum class NameState { Idle, Checking, Available, Taken, Invalid }
 
 @Composable
 fun EditProfileScreen(
     onBack: () -> Unit,
-    onSaved: () -> Unit,
-    vm: AuthViewModel = viewModel()
+    onSaved: () -> Unit
 ) {
     val auth = remember { FirebaseAuth.getInstance() }
     val db = remember { FirebaseFirestore.getInstance() }
+    val scope = rememberCoroutineScope()
     val uid = auth.currentUser?.uid
 
     var firstName by remember { mutableStateOf("") }
@@ -53,12 +62,10 @@ fun EditProfileScreen(
     var loading by remember { mutableStateOf(true) }
     var saving by remember { mutableStateOf(false) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
+    var nameState by remember { mutableStateOf(NameState.Idle) }
 
-    val unameState by vm.usernameState.collectAsState()
-
-    // Load existing profile
     LaunchedEffect(uid) {
-        if (uid == null) return@LaunchedEffect
+        if (uid == null) { loading = false; return@LaunchedEffect }
         runCatching {
             val doc = db.collection("users").document(uid).get().await()
             firstName = doc.getString("firstName") ?: ""
@@ -69,19 +76,42 @@ fun EditProfileScreen(
             link = doc.getString("link") ?: ""
         }
         loading = false
-        // Auto-check current username availability if it changed
-        if (username.isNotEmpty()) vm.checkUsername(username)
     }
 
-    val usernameChanged = username.trim().lowercase() != originalUsername
+    // Debounced username check
+    LaunchedEffect(username) {
+        val clean = username.trim().lowercase()
+        if (clean == originalUsername) {
+            nameState = NameState.Idle
+            return@LaunchedEffect
+        }
+        when {
+            clean.isEmpty() -> { nameState = NameState.Idle; return@LaunchedEffect }
+            clean.length < 3 -> { nameState = NameState.Invalid; return@LaunchedEffect }
+            !clean.matches(Regex("^[a-z0-9_.]+$")) -> {
+                nameState = NameState.Invalid; return@LaunchedEffect
+            }
+        }
+        nameState = NameState.Checking
+        delay(450)
+        val available = runCatching {
+            val snap = db.collection("users")
+                .whereEqualTo("usernameLower", clean)
+                .limit(1)
+                .get()
+                .await()
+            snap.isEmpty
+        }.getOrDefault(false)
+        nameState = if (available) NameState.Available else NameState.Taken
+    }
+
     val canSubmit = firstName.isNotBlank()
             && lastName.isNotBlank()
             && username.length >= 3
-            && (!usernameChanged || unameState == UsernameState.Available)
+            && (username.trim().lowercase() == originalUsername || nameState == NameState.Available)
             && !saving
 
     Column(Modifier.fillMaxSize().background(EarnyBlack)) {
-        // Top bar
         Row(
             Modifier.fillMaxWidth().padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -115,7 +145,7 @@ fun EditProfileScreen(
         ) {
             SafeAvatar(
                 name = username.ifBlank { firstName.ifBlank { "?" } },
-                size = 100.dp
+                size = 96.dp
             )
 
             Spacer(Modifier.height(24.dp))
@@ -124,46 +154,46 @@ fun EditProfileScreen(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Box(Modifier.weight(1f)) {
-                    EarnyTextField(
-                        value = firstName,
-                        onValueChange = { if (it.length <= 30) firstName = it },
-                        placeholder = "First name"
-                    )
-                }
-                Box(Modifier.weight(1f)) {
-                    EarnyTextField(
-                        value = lastName,
-                        onValueChange = { if (it.length <= 30) lastName = it },
-                        placeholder = "Last name"
-                    )
-                }
+                OutlinedTextField(
+                    value = firstName,
+                    onValueChange = { if (it.length <= 30) firstName = it },
+                    placeholder = { Text("First name", color = TextWhite40) },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f),
+                    colors = fieldColors()
+                )
+                OutlinedTextField(
+                    value = lastName,
+                    onValueChange = { if (it.length <= 30) lastName = it },
+                    placeholder = { Text("Last name", color = TextWhite40) },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f),
+                    colors = fieldColors()
+                )
             }
 
             Spacer(Modifier.height(12.dp))
 
-            // Username with live check
-            EarnyTextField(
+            OutlinedTextField(
                 value = username,
                 onValueChange = {
                     val v = it.lowercase().filter { ch ->
                         ch.isLetterOrDigit() || ch == '_' || ch == '.'
                     }
-                    if (v.length <= 20) {
-                        username = v
-                        vm.checkUsername(v)
-                    }
+                    if (v.length <= 20) username = v
                 },
-                placeholder = "@username",
-                isError = usernameChanged &&
-                        (unameState == UsernameState.Taken || unameState == UsernameState.Invalid),
+                placeholder = { Text("@username", color = TextWhite40) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                colors = fieldColors(),
+                isError = nameState == NameState.Taken || nameState == NameState.Invalid,
                 trailingIcon = {
-                    when (unameState) {
-                        UsernameState.Checking -> CircularProgressIndicator(
+                    when (nameState) {
+                        NameState.Checking -> CircularProgressIndicator(
                             color = Gold, strokeWidth = 2.dp,
                             modifier = Modifier.size(18.dp)
                         )
-                        UsernameState.Available -> Icon(
+                        NameState.Available -> Icon(
                             Icons.Filled.Check, null,
                             tint = Color(0xFF4CAF50),
                             modifier = Modifier.size(22.dp)
@@ -175,26 +205,25 @@ fun EditProfileScreen(
 
             Spacer(Modifier.height(6.dp))
             Row(Modifier.fillMaxWidth().padding(start = 6.dp)) {
-                val (txt, col) = when {
-                    usernameChanged && unameState == UsernameState.Available ->
-                        "✓ @$username is available" to Color(0xFF4CAF50)
-                    usernameChanged && unameState == UsernameState.Taken ->
-                        "✗ @$username is already taken" to Color(0xFFE53935)
-                    usernameChanged && unameState == UsernameState.Invalid ->
-                        "Only 3-20 chars: a-z 0-9 _ ." to Color(0xFFE53935)
-                    usernameChanged && unameState == UsernameState.Checking ->
-                        "Checking…" to TextWhite60
-                    else -> "3+ chars, a-z 0-9 _ ." to TextWhite40
+                val (txt, col) = when (nameState) {
+                    NameState.Available -> "✓ @$username is available" to Color(0xFF4CAF50)
+                    NameState.Taken -> "✗ @$username is taken" to Color(0xFFE53935)
+                    NameState.Invalid -> "Only 3-20 chars: a-z 0-9 _ ." to Color(0xFFE53935)
+                    NameState.Checking -> "Checking…" to TextWhite60
+                    NameState.Idle -> "3+ chars, a-z 0-9 _ ." to TextWhite40
                 }
                 Text(txt, color = col, fontSize = 11.sp)
             }
 
             Spacer(Modifier.height(12.dp))
 
-            EarnyTextField(
+            OutlinedTextField(
                 value = bio,
                 onValueChange = { if (it.length <= 80) bio = it },
-                placeholder = "Bio (max 80)"
+                placeholder = { Text("Bio (max 80)", color = TextWhite40) },
+                singleLine = false,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 70.dp),
+                colors = fieldColors()
             )
             Spacer(Modifier.height(4.dp))
             Row(Modifier.fillMaxWidth().padding(start = 6.dp)) {
@@ -203,11 +232,14 @@ fun EditProfileScreen(
 
             Spacer(Modifier.height(12.dp))
 
-            EarnyTextField(
+            OutlinedTextField(
                 value = link,
                 onValueChange = { if (it.length <= 100) link = it },
-                placeholder = "Website link (optional)",
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri)
+                placeholder = { Text("Website (optional)", color = TextWhite40) },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                modifier = Modifier.fillMaxWidth(),
+                colors = fieldColors()
             )
 
             if (errorMsg != null) {
@@ -220,42 +252,69 @@ fun EditProfileScreen(
 
             Spacer(Modifier.height(28.dp))
 
-            EarnyButton(
-                text = "Save changes",
+            Button(
                 enabled = canSubmit,
-                loading = saving,
-                gradient = true,
                 onClick = {
-                    if (uid == null) return@EarnyButton
+                    if (uid == null) return@Button
                     saving = true
                     errorMsg = null
-
-                    // Save to Firestore
-                    val clean = username.trim().lowercase()
-                    val update = hashMapOf<String, Any>(
-                        "firstName" to firstName.trim(),
-                        "lastName" to lastName.trim(),
-                        "fullName" to "$firstName $lastName".trim(),
-                        "username" to username.trim(),
-                        "usernameLower" to clean,
-                        "bio" to bio.trim(),
-                        "link" to link.trim()
-                    )
-
-                    db.collection("users").document(uid)
-                        .set(update, com.google.firebase.firestore.SetOptions.merge())
-                        .addOnSuccessListener {
+                    scope.launch {
+                        runCatching {
+                            db.collection("users").document(uid).set(
+                                mapOf(
+                                    "firstName" to firstName.trim(),
+                                    "lastName" to lastName.trim(),
+                                    "fullName" to "$firstName $lastName".trim(),
+                                    "username" to username.trim(),
+                                    "usernameLower" to username.trim().lowercase(),
+                                    "bio" to bio.trim(),
+                                    "link" to link.trim()
+                                ),
+                                SetOptions.merge()
+                            ).await()
+                        }.onSuccess {
                             saving = false
                             onSaved()
-                        }
-                        .addOnFailureListener { e ->
+                        }.onFailure { e ->
                             saving = false
                             errorMsg = e.message ?: "Save failed"
                         }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth().height(56.dp),
+                shape = RoundedCornerShape(100.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Gold)
+            ) {
+                if (saving) {
+                    CircularProgressIndicator(
+                        color = EarnyBlack,
+                        modifier = Modifier.size(22.dp),
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Text(
+                        "Save changes",
+                        color = EarnyBlack,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp
+                    )
                 }
-            )
+            }
 
             Spacer(Modifier.height(40.dp))
         }
     }
 }
+
+@Composable
+private fun fieldColors() = OutlinedTextFieldDefaults.colors(
+    focusedTextColor = TextWhite,
+    unfocusedTextColor = TextWhite,
+    focusedBorderColor = Gold,
+    unfocusedBorderColor = Color(0xFF2A2A2A),
+    focusedLabelColor = Gold,
+    unfocusedLabelColor = TextWhite40,
+    cursorColor = Gold,
+    focusedContainerColor = EarnyInput,
+    unfocusedContainerColor = EarnyInput
+)

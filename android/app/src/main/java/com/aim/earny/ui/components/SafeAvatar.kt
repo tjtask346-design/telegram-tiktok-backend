@@ -21,19 +21,40 @@ import com.aim.earny.ui.theme.Gold
 import com.aim.earny.ui.theme.Orange
 
 @Composable
-fun SafeAvatar(name: String, size: Dp = 96.dp, modifier: Modifier = Modifier) {
+fun SafeAvatar(
+    name: String,
+    size: Dp = 96.dp,
+    modifier: Modifier = Modifier,
+    showStoryRing: Boolean = false   // default OFF
+) {
     val letter = name.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "?"
-    Box(
-        modifier = modifier.size(size)
+
+    val outerMod = if (showStoryRing) {
+        modifier
+            .size(size)
             .background(Brush.sweepGradient(listOf(Gold, Orange, Gold)), CircleShape)
-            .padding(3.dp),
+            .padding(3.dp)
+    } else {
+        modifier.size(size)
+    }
+
+    Box(
+        modifier = outerMod,
         contentAlignment = Alignment.Center
     ) {
         Box(
-            Modifier.fillMaxSize().clip(CircleShape).background(Color(0xFF1E1E1E)),
+            Modifier
+                .fillMaxSize()
+                .clip(CircleShape)
+                .background(Color(0xFF1E1E1E)),
             contentAlignment = Alignment.Center
         ) {
-            Text(letter, color = Gold, fontSize = (size.value * 0.4f).sp, fontWeight = FontWeight.ExtraBold)
+            Text(
+                letter,
+                color = Gold,
+                fontSize = (size.value * 0.4f).sp,
+                fontWeight = FontWeight.ExtraBold
+            )
         }
     }
 }
