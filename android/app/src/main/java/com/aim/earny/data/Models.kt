@@ -101,3 +101,29 @@ data class Draft(
     val height: Int = 0,
     val createdAtMs: Long = 0L
 )
+
+
+data class ChatMessage(
+    val id: String = "",
+    val sender: String = "",
+    val text: String = "",
+    val createdAtMs: Long = 0L,
+    val isMine: Boolean = false
+)
+
+data class Chat(
+    val id: String = "",
+    val otherUid: String = "",
+    val otherUsername: String = "",
+    val otherPicMsgId: Long = 0L,
+    val lastMessage: String = "",
+    val lastAtMs: Long = 0L,
+    val unreadForMe: Long = 0L
+)
+
+
+data class DmNotifyRequest(
+    val chatId: String,
+    val receiverUid: String,
+    val text: String
+)

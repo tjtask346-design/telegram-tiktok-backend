@@ -69,6 +69,7 @@ fun ProfileScreen(
     onAddFriends: () -> Unit,
     onOpenSettings: () -> Unit = {},
     onOpenHashtag: (String) -> Unit = {},
+    onOpenChat: (otherUid: String, otherUsername: String, picMsgId: Long) -> Unit = { _, _, _ -> },
     targetUid: String? = null,
     vm: ProfileViewModel = viewModel()
 ) {
@@ -155,6 +156,7 @@ fun ProfileScreen(
                         profile = p,
                         isOwn = isOwn,
                         isFollowing = isFollowing,
+                        onOpenChat = onOpenChat,
                         onEdit = onEditProfile,
                         onShare = {
                             val handle = p.username.ifBlank { "" }
@@ -510,6 +512,7 @@ private fun ProfileHeader(
     profile: UserProfile,
     isOwn: Boolean,
     isFollowing: Boolean,
+    onOpenChat: (otherUid: String, otherUsername: String, picMsgId: Long) -> Unit,
     onEdit: () -> Unit,
     onShare: () -> Unit,
     onFollow: () -> Unit
@@ -594,7 +597,29 @@ private fun ProfileHeader(
                         onClick = onFollow
                     )
                 }
-                SmallIconButton(Icons.Filled.Email)
+                Box(
+                    Modifier.size(40.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(EarnySurface)
+                        .border(1.dp, EarnyBorder, RoundedCornerShape(8.dp))
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) {
+                            onOpenChat(
+                                profile.uid,
+                                profile.username.ifBlank { profile.fullName },
+                                profile.profilePicMsgId
+                            )
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Filled.Email, "message",
+                        tint = TextWhite,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
                 SmallIconButton(Icons.Filled.Share)
             }
         }

@@ -129,4 +129,12 @@ object DocumentMapper {
         height = doc.lng("height").toInt(),
         createdAtMs = doc.timestampMs("createdAt")
     )
+
+    fun chatMessage(doc: DocumentSnapshot, meUid: String): ChatMessage = ChatMessage(
+        id = doc.id,
+        sender = doc.str("sender"),
+        text = doc.str("text"),
+        createdAtMs = doc.timestampMs("createdAt"),
+        isMine = doc.str("sender") == meUid
+    )
 }

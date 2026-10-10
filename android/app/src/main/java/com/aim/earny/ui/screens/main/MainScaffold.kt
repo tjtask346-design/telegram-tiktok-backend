@@ -37,6 +37,7 @@ fun MainScaffold(onSignOut: () -> Unit) {
     var showSearch by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var openHashtag by remember { mutableStateOf<String?>(null) }
+    var openChat by remember { mutableStateOf<Triple<String, String, Long>?>(null) }
     var playerVideo by remember { mutableStateOf<com.aim.earny.data.Video?>(null) }
 
     // Reactive unread dot
@@ -67,14 +68,22 @@ fun MainScaffold(onSignOut: () -> Unit) {
                 )
             }
             composable("discover") { DiscoverScreen(onOpenProfile = { uid -> showOtherProfile = uid }) }
-            composable("inbox") { InboxScreen(onOpenProfile = { uid -> showOtherProfile = uid }) }
+            composable("inbox") {
+                InboxScreen(
+                    onOpenProfile = { uid -> showOtherProfile = uid },
+                    onOpenChat = { c ->
+                        openChat = Triple(c.otherUid, c.otherUsername, c.otherPicMsgId)
+                    }
+                )
+            }
             composable("profile") {
                 ProfileScreen(
                     onSignOut = onSignOut,
                     onEditProfile = { showEditProfile = true },
                     onAddFriends = { showAddFriends = true },
                     onOpenSettings = { showSettings = true },
-                    onOpenHashtag = { tag -> openHashtag = tag }
+                    onOpenHashtag = { tag -> openHashtag = tag },
+                    onOpenChat = { uid, uname, pic -> openChat = Triple(uid, uname, pic) }
                 )
             }
         }
@@ -157,6 +166,31 @@ fun MainScaffold(onSignOut: () -> Unit) {
             )
         }
 
+        openChat?.let { (uid, uname, pic) ->
+            var chatId by remember { mutableStateOf<String?>(null) }
+            LaunchedEffect(uid) {
+                chatId = runCatching {
+                    com.aim.earny.data.ChatRepository().ensureChat(uid)
+                }.getOrNull()
+            }
+            chatId?.let { cid ->
+                Box(Modifier.fillMaxSize().background(EarnyBlack)) {
+                    ChatThreadScreen(
+                        chatId = cid,
+                        otherUid = uid,
+                        otherUsername = uname,
+                        otherPicMsgId = pic,
+                        onBack = { openChat = null }
+                    )
+                }
+            } ?: Box(
+                Modifier.fillMaxSize().background(EarnyBlack),
+                contentAlignment = Alignment.Center
+            ) {
+                androidx.compose.material3.CircularProgressIndicator(color = Gold)
+            }
+        }
+
         if (showSettings) {
             Box(Modifier.fillMaxSize().background(EarnyBlack)) {
                 com.aim.earny.ui.screens.profile.SettingsScreen(
@@ -199,8 +233,12 @@ fun MainScaffold(onSignOut: () -> Unit) {
             Box(Modifier.fillMaxSize().background(EarnyBlack)) {
                 ProfileScreen(
                     onSignOut = { showOtherProfile = null },
-                    onEditProfile = { /* not own profile */ },
-                    onAddFriends = { /* not own profile */ },
+                    onEditProfile = { },
+                    onAddFriends = { },
+                    onOpenChat = { uid, uname, pic ->
+                        showOtherProfile = null
+                        openChat = Triple(uid, uname, pic)
+                    },
                     targetUid = targetUid
                 )
             }

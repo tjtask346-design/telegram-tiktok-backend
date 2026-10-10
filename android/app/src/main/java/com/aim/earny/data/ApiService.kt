@@ -11,6 +11,12 @@ import retrofit2.http.Path
 
 interface ApiService {
 
+    @POST("dm/notify")
+    suspend fun notifyDm(
+        @Header("Authorization") auth: String,
+        @Body body: DmNotifyRequest
+    ): SimpleResponse
+
     @POST("notify")
     suspend fun notify(
         @Header("Authorization") auth: String,

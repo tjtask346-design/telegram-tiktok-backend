@@ -31,7 +31,10 @@ import com.aim.earny.ui.theme.*
 import kotlinx.coroutines.launch
 
 @Composable
-fun InboxScreen(onOpenProfile: (String) -> Unit = {}) {
+fun InboxScreen(
+    onOpenProfile: (String) -> Unit = {},
+    onOpenChat: (com.aim.earny.data.Chat) -> Unit = {}
+) {
     val repo = remember { NotificationsRepository() }
     val scope = rememberCoroutineScope()
 
@@ -99,8 +102,7 @@ fun InboxScreen(onOpenProfile: (String) -> Unit = {}) {
                         }
                     }
                 }
-                else -> EmptyState(Icons.Filled.Email, "Messages",
-                    "Direct messages coming soon")
+                else -> ChatListScreen(onOpenChat = onOpenChat)
             }
         }
     }

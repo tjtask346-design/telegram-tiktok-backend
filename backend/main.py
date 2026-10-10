@@ -622,3 +622,67 @@ async def trending_hashtags(limit: int = 20):
         log.warning(f"trending failed: {e}")
         return {"items": []}
 
+@app.post("/dm/notify")
+async def notify_dm(
+    request: Request,
+    authorization: str = Header(...),
+):
+    sender_uid = await verify_token(authorization)
+    data = await request.json()
+    chat_id = (data.get("chatId") or "").strip()
+    receiver_uid = (data.get("receiverUid") or "").strip()
+    text = (data.get("text") or "").strip()[:100]
+
+    if not chat_id or not receiver_uid:
+        raise HTTPException(400, "Missing chatId/receiverUid")
+    if sender_uid == receiver_uid:
+        return {"ok": True, "skipped": "self"}
+
+    # Get sender name
+    try:
+        sdoc = db.collection("users").document(sender_uid).get()
+        sdata = sdoc.to_dict() or {}
+        sender_name = sdata.get("username") or sdata.get("fullName") or "Someone"
+    except Exception:
+        sender_name = "Someone"
+
+    # Target fcm token
+    try:
+        doc = db.collection("users").document(receiver_uid).get()
+        target_token = (doc.to_dict() or {}).get("fcmToken") if doc.exists else None
+    except Exception:
+        target_token = None
+
+    # Write notification doc (always)
+    try:
+        db.collection("users").document(receiver_uid) \
+            .collection("notifications").document().set({
+                "kind": "message",
+                "title": f"@{sender_name}",
+                "body": text,
+                "videoId": "",
+                "senderUid": sender_uid,
+                "senderName": sender_name,
+                "chatId": chat_id,
+                "unread": True,
+                "createdAt": firestore.SERVER_TIMESTAMP,
+            })
+    except Exception as e:
+        log.warning(f"dm notif doc failed: {e}")
+
+    # FCM push
+    if target_token:
+        try:
+            messaging.send(messaging.Message(
+                notification=messaging.Notification(
+                    title=f"@{sender_name}",
+                    body=text,
+                ),
+                data={"kind": "message", "chatId": chat_id, "senderUid": sender_uid},
+                token=target_token,
+            ))
+        except Exception as e:
+            log.warning(f"dm fcm failed: {e}")
+
+    return {"ok": True}
+
