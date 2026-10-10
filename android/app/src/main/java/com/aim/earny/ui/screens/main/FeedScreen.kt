@@ -62,7 +62,7 @@ private fun buildCloudflareSafeDataSourceFactory(context: Context): DataSource.F
             // Keep same position, remove the length cap.
             // Converts "Range: bytes=N-M" into "Range: bytes=N-"
             // which Cloudflare accepts unconditionally.
-            return dataSpec.subrange(0, C.LENGTH_UNSET)
+            return dataSpec.subrange(0L, C.LENGTH_UNSET.toLong())
         }
     }
     return ResolvingDataSource.Factory(baseFactory, resolver)
