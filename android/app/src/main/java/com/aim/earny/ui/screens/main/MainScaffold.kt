@@ -33,6 +33,7 @@ fun MainScaffold(onSignOut: () -> Unit) {
     var showNewPost by remember { mutableStateOf(false) }
     var showEditProfile by remember { mutableStateOf(false) }
     var showAddFriends by remember { mutableStateOf(false) }
+    var showOtherProfile by remember { mutableStateOf<String?>(null) }
 
     // Reactive unread dot
     val db = remember { FirebaseFirestore.getInstance() }
@@ -43,9 +44,10 @@ fun MainScaffold(onSignOut: () -> Unit) {
         if (uid == null) return@LaunchedEffect
         db.collection("messages")
             .whereEqualTo("receiver", uid)
-            .whereEqualTo("unread", true)
             .addSnapshotListener { snap, _ ->
-                hasUnread = (snap?.size() ?: 0) > 0
+                hasUnread = snap?.documents?.any {
+                    it.getBoolean("unread") == true
+                } ?: false
             }
     }
 
@@ -55,7 +57,7 @@ fun MainScaffold(onSignOut: () -> Unit) {
             modifier = Modifier.padding(bottom = 80.dp)
         ) {
             composable("feed") { FeedScreen() }
-            composable("discover") { DiscoverScreen() }
+            composable("discover") { DiscoverScreen(onOpenProfile = { uid -> showOtherProfile = uid }) }
             composable("inbox") { InboxScreen() }
             composable("profile") {
                 ProfileScreen(
@@ -130,6 +132,31 @@ fun MainScaffold(onSignOut: () -> Unit) {
         if (showAddFriends) {
             Box(Modifier.fillMaxSize().background(EarnyBlack)) {
                 AddFriendsScreen(onBack = { showAddFriends = false })
+            }
+        }
+
+        showOtherProfile?.let { targetUid ->
+            Box(Modifier.fillMaxSize().background(EarnyBlack)) {
+                ProfileScreen(
+                    onSignOut = { showOtherProfile = null },
+                    onEditProfile = { /* not own profile */ },
+                    onAddFriends = { /* not own profile */ },
+                    targetUid = targetUid
+                )
+            }
+            // Simple back handler
+            Box(
+                Modifier.fillMaxSize().padding(16.dp),
+                contentAlignment = Alignment.TopStart
+            ) {
+                Icon(
+                    Icons.Filled.ArrowBack,
+                    contentDescription = "Back",
+                    tint = Color.White,
+                    modifier = Modifier
+                        .size(26.dp)
+                        .clickable { showOtherProfile = null }
+                )
             }
         }
     }

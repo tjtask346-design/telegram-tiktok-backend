@@ -80,7 +80,8 @@ object DocumentMapper {
         fromName = doc.str("fromName", "User"),
         fromUid = doc.str("fromUid"),
         text = doc.str("text"),
-        unread = doc.bool("unread")
+        unread = doc.bool("unread"),
+        timestamp = doc.timestampMs("timestamp")
     )
 
     fun message(doc: QueryDocumentSnapshot): InboxMessage = message(doc as DocumentSnapshot)

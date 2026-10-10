@@ -83,11 +83,24 @@ fun ProfileScreen(
 
     Column(Modifier.fillMaxSize().background(EarnyBlack)) {
 
-        ProfileTopBar(
-            username = profile?.username.orEmpty(),
-            onAddFriends = onAddFriends,
-            onSignOut = onSignOut
-        )
+        if (isOwn) {
+            ProfileTopBar(
+                username = profile?.username.orEmpty(),
+                onAddFriends = onAddFriends,
+                onSignOut = onSignOut
+            )
+        } else {
+            // Simple bar for other user's profile
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "@" + (profile?.username ?: ""),
+                    color = TextWhite, fontSize = 17.sp, fontWeight = FontWeight.Bold
+                )
+            }
+        }
 
         if (loading && profile == null) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

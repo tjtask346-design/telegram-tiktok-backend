@@ -1,6 +1,8 @@
 package com.aim.earny.ui.screens.main
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -22,21 +24,29 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.aim.earny.data.DocumentMapper
 import com.aim.earny.data.UserProfile
+import com.aim.earny.data.formatCount
 import com.aim.earny.ui.theme.*
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.tasks.await
 
 @Composable
-fun DiscoverScreen() {
+fun DiscoverScreen(onOpenProfile: (String) -> Unit = {}) {
     val db = remember { FirebaseFirestore.getInstance() }
+    val me = FirebaseAuth.getInstance().currentUser?.uid
+
     var users by remember { mutableStateOf<List<UserProfile>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(me) {
         runCatching {
-            val snap = db.collection("users").limit(60).get().await()
-            users = snap.documents.map { com.aim.earny.data.DocumentMapper.user(it) }
+            val snap = db.collection("users").limit(100).get().await()
+            users = snap.documents
+                .map { DocumentMapper.user(it) }
+                .filter { it.uid != me }
+                .sortedByDescending { it.followers }
         }
         loading = false
     }
@@ -69,7 +79,7 @@ fun DiscoverScreen() {
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 items(users) { user ->
-                    UserCard(user)
+                    UserCard(user, onClick = { onOpenProfile(user.uid) })
                 }
             }
         }
@@ -77,12 +87,18 @@ fun DiscoverScreen() {
 }
 
 @Composable
-private fun UserCard(user: UserProfile) {
-    val name = user.fullName.ifBlank { user.email.substringBefore("@") }
+private fun UserCard(user: UserProfile, onClick: () -> Unit) {
+    val name = user.username.ifBlank {
+        user.fullName.ifBlank { user.email.substringBefore("@") }
+    }
     Column(
         Modifier.fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
             .background(EarnySurface)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null, onClick = onClick
+            )
             .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -103,12 +119,12 @@ private fun UserCard(user: UserProfile) {
         }
         Spacer(Modifier.height(10.dp))
         Text(
-            name, color = TextWhite, fontSize = 14.sp,
+            "@" + name, color = TextWhite, fontSize = 14.sp,
             fontWeight = FontWeight.SemiBold, maxLines = 1
         )
         Spacer(Modifier.height(4.dp))
         Text(
-            "${user.followers} followers",
+            "${formatCount(user.followers)} followers",
             color = TextWhite60, fontSize = 11.sp
         )
     }

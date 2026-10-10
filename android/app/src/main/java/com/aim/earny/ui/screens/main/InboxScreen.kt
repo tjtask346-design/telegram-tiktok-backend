@@ -19,11 +19,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.aim.earny.data.DocumentMapper
 import com.aim.earny.data.InboxMessage
 import com.aim.earny.ui.theme.*
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.Query
 import kotlinx.coroutines.tasks.await
 
 @Composable
@@ -37,11 +37,16 @@ fun InboxScreen() {
     LaunchedEffect(uid) {
         if (uid != null) {
             runCatching {
+                // ⚠️ No orderBy(timestamp) — avoids composite index.
+                // We sort client-side.
                 val snap = db.collection("messages")
                     .whereEqualTo("receiver", uid)
-                    .orderBy("timestamp", Query.Direction.DESCENDING)
-                    .limit(50).get().await()
-                messages = snap.documents.map { com.aim.earny.data.DocumentMapper.message(it) }
+                    .limit(100)
+                    .get()
+                    .await()
+                messages = snap.documents
+                    .map { DocumentMapper.message(it) }
+                    .sortedByDescending { it.timestamp }
             }
         }
         loading = false
@@ -85,7 +90,10 @@ fun InboxScreen() {
                         }
                         Spacer(Modifier.width(14.dp))
                         Column(Modifier.weight(1f)) {
-                            Text(msg.fromName, color = TextWhite, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                            Text(
+                                msg.fromName,
+                                color = TextWhite, fontWeight = FontWeight.SemiBold, fontSize = 15.sp
+                            )
                             Text(msg.text, color = TextWhite60, fontSize = 13.sp, maxLines = 1)
                         }
                         if (msg.unread) {

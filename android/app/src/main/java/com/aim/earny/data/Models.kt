@@ -44,5 +44,6 @@ data class InboxMessage(
     val fromName: String = "",
     val fromUid: String = "",
     val text: String = "",
-    val unread: Boolean = false
+    val unread: Boolean = false,
+    val timestamp: Long = 0L
 )
