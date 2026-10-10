@@ -34,6 +34,7 @@ fun MainScaffold(onSignOut: () -> Unit) {
     var showEditProfile by remember { mutableStateOf(false) }
     var showAddFriends by remember { mutableStateOf(false) }
     var showOtherProfile by remember { mutableStateOf<String?>(null) }
+    var showSearch by remember { mutableStateOf(false) }
 
     // Reactive unread dot
     val db = remember { FirebaseFirestore.getInstance() }
@@ -58,7 +59,8 @@ fun MainScaffold(onSignOut: () -> Unit) {
         ) {
             composable("feed") {
                 FeedScreen(
-                    onOpenProfile = { uid -> showOtherProfile = uid }
+                    onOpenProfile = { uid -> showOtherProfile = uid },
+                    onOpenSearch = { showSearch = true }
                 )
             }
             composable("discover") { DiscoverScreen(onOpenProfile = { uid -> showOtherProfile = uid }) }
@@ -136,6 +138,18 @@ fun MainScaffold(onSignOut: () -> Unit) {
         if (showAddFriends) {
             Box(Modifier.fillMaxSize().background(EarnyBlack)) {
                 AddFriendsScreen(onBack = { showAddFriends = false })
+            }
+        }
+
+        if (showSearch) {
+            Box(Modifier.fillMaxSize().background(EarnyBlack)) {
+                UserSearchScreen(
+                    onBack = { showSearch = false },
+                    onOpenProfile = { uid ->
+                        showSearch = false
+                        showOtherProfile = uid
+                    }
+                )
             }
         }
 

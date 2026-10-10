@@ -2,7 +2,10 @@ package com.aim.earny.vm
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.aim.earny.BuildConfig
+import com.aim.earny.data.ApiService
 import com.aim.earny.data.DocumentMapper
+import com.aim.earny.data.VideoRepository
 import com.aim.earny.data.FollowRepository
 import com.aim.earny.data.UserProfile
 import com.aim.earny.data.Video
@@ -13,14 +16,24 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import retrofit2.Retrofit
+import retrofit2.converter.gson.GsonConverterFactory
 
-enum class ProfileTab { VIDEOS, PRIVATE, REPOSTS, LIKED }
+enum class ProfileTab { VIDEOS, PRIVATE, REPOSTS, LIKED, SAVED }
 
 class ProfileViewModel : ViewModel() {
 
     private val db = FirebaseFirestore.getInstance()
     private val auth = FirebaseAuth.getInstance()
     private val followRepo = FollowRepository(auth, db)
+    private val videoRepo: VideoRepository by lazy {
+        val api = Retrofit.Builder()
+            .baseUrl(BuildConfig.API_BASE.trimEnd('/') + "/")
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+            .create(ApiService::class.java)
+        VideoRepository(api, auth, db)
+    }
 
     private val _profile = MutableStateFlow<UserProfile?>(null)
     val profile = _profile.asStateFlow()
@@ -35,7 +48,9 @@ class ProfileViewModel : ViewModel() {
     val reposts = _reposts.asStateFlow()
 
     private val _liked = MutableStateFlow<List<Video>>(emptyList())
+    private val _saved = MutableStateFlow<List<Video>>(emptyList())
     val liked = _liked.asStateFlow()
+    val saved = _saved.asStateFlow()
 
     private val _loading = MutableStateFlow(true)
     val loading = _loading.asStateFlow()
@@ -87,6 +102,15 @@ class ProfileViewModel : ViewModel() {
             }
 
             _liked.value = emptyList()
+
+            // Saved: only for own profile
+            if (_isOwnProfile.value) {
+                runCatching {
+                    _saved.value = videoRepo.getSavedVideos()
+                }
+            } else {
+                _saved.value = emptyList()
+            }
 
             // Check follow state if viewing someone else
             if (!_isOwnProfile.value && currentTargetUid != null) {

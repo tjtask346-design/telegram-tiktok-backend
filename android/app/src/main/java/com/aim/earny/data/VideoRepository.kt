@@ -75,4 +75,27 @@ class VideoRepository(
             api.incrementView("Bearer $token", videoId)
         }
     }
+
+
+    /** Load videos the current user has bookmarked. */
+    suspend fun getSavedVideos(): List<Video> {
+        val me = auth.currentUser?.uid ?: return emptyList()
+        val bookmarks = db.collection("users").document(me)
+            .collection("bookmarks")
+            .get().await()
+        val ids = bookmarks.documents.map { it.id }
+        if (ids.isEmpty()) return emptyList()
+
+        val result = mutableListOf<Video>()
+        // Firestore `in` supports max 10 — chunk by 10
+        ids.chunked(10).forEach { chunk ->
+            runCatching {
+                val snap = db.collection("videos")
+                    .whereIn(com.google.firebase.firestore.FieldPath.documentId(), chunk)
+                    .get().await()
+                result += snap.documents.map { DocumentMapper.video(it) }
+            }
+        }
+        return result
+    }
 }

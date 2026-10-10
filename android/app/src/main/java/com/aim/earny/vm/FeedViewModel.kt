@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.aim.earny.BuildConfig
 import com.aim.earny.data.ApiService
 import com.aim.earny.data.DocumentMapper
+import com.aim.earny.data.BookmarkRepository
 import com.aim.earny.data.FollowRepository
 import com.aim.earny.data.Video
 import com.aim.earny.data.VideoRepository
@@ -31,6 +32,7 @@ class FeedViewModel : ViewModel() {
 
     private val videoRepo = VideoRepository(api)
     private val followRepo = FollowRepository()
+    private val bookmarkRepo = BookmarkRepository()
 
     private val _videos = MutableStateFlow<List<Video>>(emptyList())
     val videos = _videos.asStateFlow()
@@ -44,6 +46,10 @@ class FeedViewModel : ViewModel() {
     /** IDs of videos I've liked */
     private val _likedIds = MutableStateFlow<Set<String>>(emptySet())
     val likedIds = _likedIds.asStateFlow()
+
+    /** Video IDs I've bookmarked */
+    private val _bookmarkedIds = MutableStateFlow<Set<String>>(emptySet())
+    val bookmarkedIds = _bookmarkedIds.asStateFlow()
 
     /** UIDs I'm currently following */
     private val _followingIds = MutableStateFlow<Set<String>>(emptySet())
@@ -66,6 +72,14 @@ class FeedViewModel : ViewModel() {
                     .get()
                     .await()
                 _videos.value = snap.documents.map { DocumentMapper.video(it) }
+
+                // Load my bookmarks
+                val meB = auth.currentUser?.uid
+                if (meB != null) {
+                    val bSnap = db.collection("users").document(meB)
+                        .collection("bookmarks").get().await()
+                    _bookmarkedIds.value = bSnap.documents.map { it.id }.toSet()
+                }
 
                 // Load my follows (for the +/✓ toggle + "Following" tab)
                 val me = auth.currentUser?.uid
@@ -161,5 +175,25 @@ class FeedViewModel : ViewModel() {
     fun followingFeed(): List<Video> {
         val following = _followingIds.value
         return _videos.value.filter { following.contains(it.uploader) }
+    }
+
+
+    fun toggleBookmark(video: Video) {
+        val wasBookmarked = _bookmarkedIds.value.contains(video.id)
+        val optimistic = !wasBookmarked
+
+        _bookmarkedIds.value = if (optimistic)
+            _bookmarkedIds.value + video.id else _bookmarkedIds.value - video.id
+
+        viewModelScope.launch {
+            try {
+                val actual = bookmarkRepo.toggle(video.id)
+                _bookmarkedIds.value = if (actual)
+                    _bookmarkedIds.value + video.id else _bookmarkedIds.value - video.id
+            } catch (_: Exception) {
+                _bookmarkedIds.value = if (wasBookmarked)
+                    _bookmarkedIds.value + video.id else _bookmarkedIds.value - video.id
+            }
+        }
     }
 }

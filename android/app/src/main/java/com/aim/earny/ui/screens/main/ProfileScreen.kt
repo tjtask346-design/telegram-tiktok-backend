@@ -74,6 +74,7 @@ fun ProfileScreen(
     val privateVideos by vm.privateVideos.collectAsStateWithLifecycle()
     val reposts by vm.reposts.collectAsStateWithLifecycle()
     val liked by vm.liked.collectAsStateWithLifecycle()
+    val saved by vm.saved.collectAsStateWithLifecycle()
     val loading by vm.loading.collectAsStateWithLifecycle()
     val isOwn by vm.isOwnProfile.collectAsStateWithLifecycle()
     val isFollowing by vm.isFollowing.collectAsStateWithLifecycle()
@@ -115,6 +116,7 @@ fun ProfileScreen(
                 ProfileTab.PRIVATE -> if (isOwn) privateVideos else emptyList()
                 ProfileTab.REPOSTS -> reposts
                 ProfileTab.LIKED -> liked
+                ProfileTab.SAVED -> saved
             }
 
             LazyVerticalGrid(
@@ -396,6 +398,11 @@ private fun ProfileTabs(
             TabItem(Icons.Filled.Favorite, current == ProfileTab.LIKED, Modifier.weight(1f)) {
                 onSelect(ProfileTab.LIKED)
             }
+            if (isOwn) {
+                TabItem(Icons.Filled.Bookmark, current == ProfileTab.SAVED, Modifier.weight(1f)) {
+                    onSelect(ProfileTab.SAVED)
+                }
+            }
         }
         Box(Modifier.fillMaxWidth().height(1.dp).background(EarnyBorder))
     }
@@ -509,18 +516,21 @@ private fun EmptyTab(tab: ProfileTab, isOwn: Boolean) {
             ProfileTab.PRIVATE -> Icons.Filled.Lock
             ProfileTab.REPOSTS -> Icons.Filled.Repeat
             ProfileTab.LIKED -> Icons.Filled.Favorite
+            ProfileTab.SAVED -> Icons.Filled.Bookmark
         }
         val title = when (tab) {
             ProfileTab.VIDEOS -> "No videos yet"
             ProfileTab.PRIVATE -> "No private videos"
             ProfileTab.REPOSTS -> "No reposts yet"
             ProfileTab.LIKED -> "No liked videos"
+            ProfileTab.SAVED -> "No saved videos"
         }
         val sub = when (tab) {
             ProfileTab.VIDEOS -> if (isOwn) "Tap Earny Orb to post" else "This user hasn't posted"
             ProfileTab.PRIVATE -> "Only you can see these"
             ProfileTab.REPOSTS -> "Videos you repost will appear here"
             ProfileTab.LIKED -> "Videos you like appear here"
+            ProfileTab.SAVED -> "Videos you bookmark appear here"
         }
 
         Box(

@@ -47,6 +47,7 @@ import com.google.firebase.auth.FirebaseAuth
 @Composable
 fun FeedScreen(
     onOpenProfile: (String) -> Unit = {},
+    onOpenSearch: () -> Unit = {},
     vm: FeedViewModel = viewModel()
 ) {
     val allVideos by vm.videos.collectAsStateWithLifecycle()
@@ -54,6 +55,7 @@ fun FeedScreen(
     val error by vm.error.collectAsStateWithLifecycle()
     val likedIds by vm.likedIds.collectAsStateWithLifecycle()
     val followingIds by vm.followingIds.collectAsStateWithLifecycle()
+    val bookmarkedIds by vm.bookmarkedIds.collectAsStateWithLifecycle()
 
     var tab by remember { mutableStateOf(1) } // 0 = Following, 1 = For You
     var commentsForVideo by remember { mutableStateOf<String?>(null) }
@@ -151,9 +153,11 @@ fun FeedScreen(
                         isCurrentPage = page == currentIndex,
                         exo = exo,
                         isLiked = likedIds.contains(v.id),
+                        isBookmarked = bookmarkedIds.contains(v.id),
                         isFollowing = followingIds.contains(v.uploader),
                         isMine = v.uploader == myUid,
                         onToggleLike = { vm.toggleLike(v) },
+                        onToggleBookmark = { vm.toggleBookmark(v) },
                         onToggleFollow = { vm.toggleFollow(v.uploader) },
                         onBecameVisible = { vm.onPageVisible(v) },
                         onOpenProfile = { onOpenProfile(v.uploader) },
@@ -176,7 +180,10 @@ fun FeedScreen(
             Icon(
                 Icons.Filled.Search, "search",
                 tint = Color.White,
-                modifier = Modifier.size(26.dp)
+                modifier = Modifier.size(26.dp).clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null, onClick = onOpenSearch
+                )
             )
         }
     }
@@ -216,9 +223,11 @@ private fun VideoPage(
     isCurrentPage: Boolean,
     exo: ExoPlayer,
     isLiked: Boolean,
+    isBookmarked: Boolean,
     isFollowing: Boolean,
     isMine: Boolean,
     onToggleLike: () -> Unit,
+    onToggleBookmark: () -> Unit,
     onToggleFollow: () -> Unit,
     onBecameVisible: () -> Unit,
     onOpenProfile: () -> Unit,
@@ -357,7 +366,11 @@ private fun VideoPage(
             ) { onToggleLike() }
 
             ActionItem(Icons.Filled.ChatBubble, formatCount(video.comments)) { onOpenComments() }
-            ActionItem(Icons.Filled.Bookmark, "0") {}
+            ActionItem(
+                icon = if (isBookmarked) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
+                count = if (isBookmarked) "Saved" else "Save",
+                tint = if (isBookmarked) Gold else Color.White
+            ) { onToggleBookmark() }
             ActionItem(Icons.Filled.Share, formatCount(video.likes)) {
                 val url = BuildConfig.API_BASE.trimEnd('/') + "/stream/" + video.telegramMsgId
                 val text = if (video.caption.isNotBlank())
