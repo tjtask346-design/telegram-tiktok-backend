@@ -92,7 +92,7 @@ fun ChatThreadScreen(
             )
         }
 
-        HorizontalHorizontalHorizontalDivider(color = EarnyBorder)
+        HorizontalDivider(color = EarnyBorder)
 
         // Messages
         Box(Modifier.weight(1f)) {
@@ -125,7 +125,7 @@ fun ChatThreadScreen(
             }
         }
 
-        HorizontalHorizontalHorizontalDivider(color = EarnyBorder)
+        HorizontalDivider(color = EarnyBorder)
 
         // Input
         Row(
