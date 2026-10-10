@@ -14,7 +14,8 @@ data class Video(
     val isPrivate: Boolean = false,
     val isDraft: Boolean = false,
     val isRepost: Boolean = false,
-    val createdAtMs: Long = 0L
+    val createdAtMs: Long = 0L,
+    val thumbB64: String = ""
 )
 
 data class UploadResponse(

@@ -1,3 +1,4 @@
+import base64
 import os
 import os
 import logging
@@ -86,6 +87,31 @@ async def upload(
         if total == 0:
             raise HTTPException(400, "Empty file")
         log.info("Saved %s bytes" % total)
+
+        # ---- Generate thumbnail (first frame at ~1s, 256px wide) ----
+        thumb_b64 = ""
+        try:
+            import subprocess as _sp
+            thumb_path = tmp_path + ".thumb.jpg"
+            r = _sp.run(
+                ["ffmpeg", "-y", "-ss", "1", "-i", tmp_path,
+                 "-vframes", "1", "-vf", "scale=256:-2",
+                 "-q:v", "5", thumb_path],
+                capture_output=True, timeout=30
+            )
+            if r.returncode == 0 and os.path.exists(thumb_path):
+                with open(thumb_path, "rb") as tf:
+                    raw = tf.read()
+                if len(raw) < 200 * 1024:  # sanity cap
+                    thumb_b64 = base64.b64encode(raw).decode("ascii")
+                try: os.unlink(thumb_path)
+                except: pass
+                log.info(f"thumbnail {len(thumb_b64)} b64 chars")
+            else:
+                log.warning(f"thumb ffmpeg rc={r.returncode}")
+        except Exception as e:
+            log.warning(f"thumbnail skipped: {e}")
+
         msg_id = await upload_video(tmp_path, caption, duration, width, height)
     finally:
         try:
@@ -116,6 +142,7 @@ async def upload(
         "duration": duration,
         "width": width,
         "height": height,
+        "thumbB64": thumb_b64 if 'thumb_b64' in dir() else "",
         "likes": 0,
         "views": 0,
         "comments": 0,

@@ -2,6 +2,7 @@
 
 package com.aim.earny.ui.screens.main
 
+import android.content.Intent
 import android.widget.Toast
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -346,8 +347,21 @@ private fun VideoPage(
 
             ActionItem(Icons.Filled.ChatBubble, formatCount(video.comments)) {}
             ActionItem(Icons.Filled.Bookmark, "0") {}
-            ActionItem(Icons.Filled.Share, "0") {
-                Toast.makeText(ctx, "Shared", Toast.LENGTH_SHORT).show()
+            ActionItem(Icons.Filled.Share, formatCount(video.likes)) {
+                val url = BuildConfig.API_BASE.trimEnd('/') + "/stream/" + video.telegramMsgId
+                val text = if (video.caption.isNotBlank())
+                    "${video.caption}
+
+$url" else url
+                val intent = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_TEXT, text)
+                }
+                try {
+                    ctx.startActivity(Intent.createChooser(intent, "Share video"))
+                } catch (_: Exception) {
+                    Toast.makeText(ctx, "No share app", Toast.LENGTH_SHORT).show()
+                }
             }
         }
     }

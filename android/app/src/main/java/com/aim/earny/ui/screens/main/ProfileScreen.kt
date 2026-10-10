@@ -80,6 +80,7 @@ fun ProfileScreen(
 
     val ctx = LocalContext.current
     var currentTab by remember { mutableStateOf(ProfileTab.VIDEOS) }
+    var playingVideo by remember { mutableStateOf<Video?>(null) }
 
     Column(Modifier.fillMaxSize().background(EarnyBlack)) {
 
@@ -160,10 +161,18 @@ fun ProfileScreen(
                         EmptyTab(tab = currentTab, isOwn = isOwn)
                     }
                 } else {
-                    items(list) { v -> VideoTile(video = v) }
+                    items(list) { v -> VideoTile(video = v, onTap = { playingVideo = v }) }
                 }
             }
         }
+    }
+
+    // Fullscreen player overlay
+    playingVideo?.let { v ->
+        VideoPlayerOverlay(
+            video = v,
+            onClose = { playingVideo = null }
+        )
     }
 }
 
@@ -418,7 +427,7 @@ private fun TabItem(
 }
 
 @Composable
-private fun VideoTile(video: Video) {
+private fun VideoTile(video: Video, onTap: () -> Unit) {
     val gradients = listOf(
         GradPurplePink, GradBlueCyan, GradOrangeRed,
         GradGreenTeal, GradGoldOrange
@@ -432,13 +441,26 @@ private fun VideoTile(video: Video) {
             .aspectRatio(9f / 16f)
             .clip(RoundedCornerShape(4.dp))
             .background(Brush.verticalGradient(grad))
-    ) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Icon(
-                Icons.Filled.PlayArrow, null,
-                tint = Color.White.copy(alpha = 0.9f),
-                modifier = Modifier.size(28.dp)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null, onClick = onTap
             )
+    ) {
+        // Show thumbnail if available; otherwise just the play icon
+        if (video.thumbB64.isNotBlank()) {
+            com.aim.earny.ui.components.VideoThumbBase64(
+                b64 = video.thumbB64,
+                modifier = Modifier.fillMaxSize(),
+                showPlayIcon = true
+            )
+        } else {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Icon(
+                    Icons.Filled.PlayArrow, null,
+                    tint = Color.White.copy(alpha = 0.9f),
+                    modifier = Modifier.size(28.dp)
+                )
+            }
         }
 
         if (video.isPinned) {

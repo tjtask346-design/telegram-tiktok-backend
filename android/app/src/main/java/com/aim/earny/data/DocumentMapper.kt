@@ -52,7 +52,8 @@ object DocumentMapper {
         isPrivate = doc.bool("isPrivate"),
         isDraft = doc.bool("isDraft"),
         isRepost = doc.bool("isRepost"),
-        createdAtMs = doc.timestampMs("createdAt")
+        createdAtMs = doc.timestampMs("createdAt"),
+        thumbB64 = doc.str("thumbB64")
     )
 
     fun video(doc: QueryDocumentSnapshot): Video = video(doc as DocumentSnapshot)
