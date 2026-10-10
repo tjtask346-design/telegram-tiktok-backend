@@ -83,11 +83,15 @@ fun ProfileScreen(
     val loading by vm.loading.collectAsStateWithLifecycle()
     val isOwn by vm.isOwnProfile.collectAsStateWithLifecycle()
     val isFollowing by vm.isFollowing.collectAsStateWithLifecycle()
+    val isBlocked by vm.isBlocked.collectAsStateWithLifecycle()
 
     val ctx = LocalContext.current
     var currentTab by remember { mutableStateOf(ProfileTab.VIDEOS) }
     var playingVideo by remember { mutableStateOf<Video?>(null) }
     var pendingDelete by remember { mutableStateOf<Video?>(null) }
+    var showProfileActions by remember { mutableStateOf(false) }
+    var showReportUser by remember { mutableStateOf(false) }
+    var confirmBlockProfile by remember { mutableStateOf(false) }
     var showActionsFor by remember { mutableStateOf<Video?>(null) }
 
     Column(Modifier.fillMaxSize().background(EarnyBlack)) {
@@ -107,6 +111,16 @@ fun ProfileScreen(
                 Text(
                     "@" + (profile?.username ?: ""),
                     color = TextWhite, fontSize = 17.sp, fontWeight = FontWeight.Bold
+                )
+                Spacer(Modifier.weight(1f))
+                Icon(
+                    Icons.Filled.MoreVert, "more",
+                    tint = TextWhite,
+                    modifier = Modifier.size(24.dp)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) { showProfileActions = true }
                 )
             }
         }
@@ -199,6 +213,159 @@ fun ProfileScreen(
             onDelete = {
                 pendingDelete = v
                 showActionsFor = null
+            }
+        )
+    }
+
+    // Other-profile actions
+    if (showProfileActions) {
+        androidx.compose.material3.ModalBottomSheet(
+            onDismissRequest = { showProfileActions = false },
+            containerColor = EarnySurface,
+            dragHandle = {
+                androidx.compose.material3.BottomSheetDefaults.DragHandle(color = TextWhite40)
+            }
+        ) {
+            Column(Modifier.padding(bottom = 24.dp)) {
+                Row(
+                    Modifier.fillMaxWidth()
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) {
+                            showProfileActions = false
+                            showReportUser = true
+                        }
+                        .padding(horizontal = 24.dp, vertical = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Filled.Flag, null, tint = Color(0xFFFF9800), modifier = Modifier.size(22.dp))
+                    Spacer(Modifier.width(16.dp))
+                    Text("Report", color = Color(0xFFFF9800), fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                }
+                Row(
+                    Modifier.fillMaxWidth()
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) {
+                            showProfileActions = false
+                            confirmBlockProfile = true
+                        }
+                        .padding(horizontal = 24.dp, vertical = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Filled.Block, null, tint = Color(0xFFE53935), modifier = Modifier.size(22.dp))
+                    Spacer(Modifier.width(16.dp))
+                    Text(
+                        if (isBlocked) "Unblock user" else "Block user",
+                        color = Color(0xFFE53935), fontSize = 15.sp, fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+        }
+    }
+
+    if (showReportUser) {
+        val reasons = listOf("spam", "harassment", "nudity", "violence", "hate_speech", "other")
+        var reason by remember { mutableStateOf(reasons.first()) }
+        var note by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { showReportUser = false },
+            containerColor = EarnySurface,
+            title = { Text("Report user", color = TextWhite, fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    Text("Why are you reporting?", color = TextWhite60, fontSize = 13.sp)
+                    Spacer(Modifier.height(8.dp))
+                    reasons.forEach { r ->
+                        Row(
+                            Modifier.fillMaxWidth()
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null
+                                ) { reason = r }
+                                .padding(vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            androidx.compose.material3.RadioButton(
+                                selected = reason == r,
+                                onClick = { reason = r },
+                                colors = androidx.compose.material3.RadioButtonDefaults.colors(
+                                    selectedColor = Gold, unselectedColor = TextWhite40
+                                )
+                            )
+                            Text(
+                                r.replace("_", " ").replaceFirstChar { it.uppercase() },
+                                color = TextWhite, fontSize = 14.sp
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    androidx.compose.material3.OutlinedTextField(
+                        value = note,
+                        onValueChange = { if (it.length <= 200) note = it },
+                        label = { Text("Note (optional)", color = TextWhite40) },
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+                        colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = TextWhite,
+                            unfocusedTextColor = TextWhite,
+                            focusedBorderColor = Gold,
+                            unfocusedBorderColor = EarnyBorder,
+                            cursorColor = Gold
+                        )
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val uid = profile?.uid ?: ""
+                    kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                        runCatching {
+                            com.aim.earny.data.ReportRepository().reportUser(uid, reason, note)
+                        }
+                    }
+                    showReportUser = false
+                }) {
+                    Text("Submit", color = Gold, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showReportUser = false }) {
+                    Text("Cancel", color = TextWhite)
+                }
+            }
+        )
+    }
+
+    if (confirmBlockProfile) {
+        AlertDialog(
+            onDismissRequest = { confirmBlockProfile = false },
+            containerColor = EarnySurface,
+            title = { Text(if (isBlocked) "Unblock user?" else "Block user?", color = TextWhite) },
+            text = {
+                Text(
+                    if (isBlocked) "They'll appear again in your feed."
+                    else "Their videos will be hidden. They won't be notified.",
+                    color = TextWhite60
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    vm.toggleBlock()
+                    confirmBlockProfile = false
+                }) {
+                    Text(
+                        if (isBlocked) "Unblock" else "Block",
+                        color = Color(0xFFE53935),
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmBlockProfile = false }) {
+                    Text("Cancel", color = TextWhite)
+                }
             }
         )
     }

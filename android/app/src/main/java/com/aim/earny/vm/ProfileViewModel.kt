@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.aim.earny.BuildConfig
 import com.aim.earny.data.ApiService
+import com.aim.earny.data.BlockRepository
 import com.aim.earny.data.DocumentMapper
 import com.aim.earny.data.VideoRepository
 import com.aim.earny.data.FollowRepository
@@ -26,6 +27,7 @@ class ProfileViewModel : ViewModel() {
     private val db = FirebaseFirestore.getInstance()
     private val auth = FirebaseAuth.getInstance()
     private val followRepo = FollowRepository(auth, db)
+    private val blockRepo = BlockRepository(auth, db)
     private val videoRepo: VideoRepository by lazy {
         val api = Retrofit.Builder()
             .baseUrl(BuildConfig.API_BASE.trimEnd('/') + "/")
@@ -59,6 +61,8 @@ class ProfileViewModel : ViewModel() {
     val isOwnProfile = _isOwnProfile.asStateFlow()
 
     private val _isFollowing = MutableStateFlow(false)
+    private val _isBlocked = MutableStateFlow(false)
+    val isBlocked = _isBlocked.asStateFlow()
     private val _deleting = MutableStateFlow(false)
     val deleting = _deleting.asStateFlow()
     val isFollowing = _isFollowing.asStateFlow()
@@ -112,6 +116,15 @@ class ProfileViewModel : ViewModel() {
                 }
             } else {
                 _saved.value = emptyList()
+            }
+
+            // Check block state
+            if (!_isOwnProfile.value && currentTargetUid != null) {
+                _isBlocked.value = runCatching {
+                    blockRepo.isBlocked(currentTargetUid!!)
+                }.getOrDefault(false)
+            } else {
+                _isBlocked.value = false
             }
 
             // Check follow state if viewing someone else
@@ -169,6 +182,25 @@ class ProfileViewModel : ViewModel() {
             } finally {
                 _deleting.value = false
             }
+        }
+    }
+
+
+    fun toggleBlock() {
+        val target = currentTargetUid ?: return
+        val me = auth.currentUser?.uid ?: return
+        if (target == me) return
+        viewModelScope.launch {
+            try {
+                val nowBlocked = blockRepo.toggle(target)
+                _isBlocked.value = nowBlocked
+                // If blocking, also unfollow
+                if (nowBlocked && _isFollowing.value) {
+                    _isFollowing.value = false
+                }
+                // Refresh
+                load(target)
+            } catch (_: Exception) {}
         }
     }
 }

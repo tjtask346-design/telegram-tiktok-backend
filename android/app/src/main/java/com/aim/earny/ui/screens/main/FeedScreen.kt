@@ -56,9 +56,13 @@ fun FeedScreen(
     val likedIds by vm.likedIds.collectAsStateWithLifecycle()
     val followingIds by vm.followingIds.collectAsStateWithLifecycle()
     val bookmarkedIds by vm.bookmarkedIds.collectAsStateWithLifecycle()
+    val blockedUids by vm.blockedUids.collectAsStateWithLifecycle()
 
     var tab by remember { mutableStateOf(1) } // 0 = Following, 1 = For You
     var commentsForVideo by remember { mutableStateOf<String?>(null) }
+    var actionsForVideo by remember { mutableStateOf<Video?>(null) }
+    var reportDialog by remember { mutableStateOf<Pair<String, String>?>(null) } // kind to target
+    var confirmBlock by remember { mutableStateOf<String?>(null) }
 
     val feedRefresh by AppEvents.feedRefresh.collectAsStateWithLifecycle()
     LaunchedEffect(feedRefresh) { vm.load() }
@@ -66,12 +70,13 @@ fun FeedScreen(
     val myUid = FirebaseAuth.getInstance().currentUser?.uid
 
     // Local filter for Following tab
-    val videos = remember(tab, allVideos, followingIds, myUid) {
+    val videos = remember(tab, allVideos, followingIds, blockedUids, myUid) {
+        val unblocked = allVideos.filter { !blockedUids.contains(it.uploader) }
         if (tab == 0) {
-            allVideos.filter {
+            unblocked.filter {
                 followingIds.contains(it.uploader) || it.uploader == myUid
             }
-        } else allVideos
+        } else unblocked
     }
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
@@ -172,7 +177,8 @@ fun FeedScreen(
                         onToggleFollow = { vm.toggleFollow(v.uploader) },
                         onBecameVisible = { vm.onPageVisible(v) },
                         onOpenProfile = { onOpenProfile(v.uploader) },
-                        onOpenComments = { commentsForVideo = v.id }
+                        onOpenComments = { commentsForVideo = v.id },
+                        onLongPress = { actionsForVideo = v }
                     )
                 }
             }
@@ -205,6 +211,215 @@ fun FeedScreen(
             onDismiss = { commentsForVideo = null }
         )
     }
+
+    // ---- Long-press actions for other user's video ----
+    actionsForVideo?.let { v ->
+        VideoActionsForOtherSheet(
+            video = v,
+            isBlocked = blockedUids.contains(v.uploader),
+            onDismiss = { actionsForVideo = null },
+            onReport = {
+                reportDialog = "video" to v.id
+                actionsForVideo = null
+            },
+            onBlock = {
+                confirmBlock = v.uploader
+                actionsForVideo = null
+            },
+            onOpenProfile = {
+                onOpenProfile(v.uploader)
+                actionsForVideo = null
+            }
+        )
+    }
+
+    // ---- Block confirm dialog ----
+    confirmBlock?.let { uid ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { confirmBlock = null },
+            containerColor = EarnySurface,
+            title = { Text(if (blockedUids.contains(uid)) "Unblock user?" else "Block user?", color = TextWhite) },
+            text = {
+                Text(
+                    if (blockedUids.contains(uid))
+                        "They'll appear again in your feed."
+                    else
+                        "Their videos will be hidden. They won't be notified.",
+                    color = TextWhite60
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    vm.toggleBlock(uid)
+                    confirmBlock = null
+                }) {
+                    Text(
+                        if (blockedUids.contains(uid)) "Unblock" else "Block",
+                        color = Color(0xFFE53935),
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmBlock = null }) {
+                    Text("Cancel", color = TextWhite)
+                }
+            }
+        )
+    }
+
+    // ---- Report dialog ----
+    reportDialog?.let { (kind, target) ->
+        ReportDialog(
+            onDismiss = { reportDialog = null },
+            onSubmit = { reason, note ->
+                // fire and forget
+                val v = videos.firstOrNull { it.id == target }
+                kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                    runCatching {
+                        if (kind == "video" && v != null) {
+                            com.aim.earny.data.ReportRepository()
+                                .reportVideo(v.id, v.uploader, reason, note)
+                        } else {
+                            com.aim.earny.data.ReportRepository()
+                                .reportUser(target, reason, note)
+                        }
+                    }
+                }
+                reportDialog = null
+            }
+        )
+    }
+}
+
+@androidx.compose.material3.ExperimentalMaterial3Api
+@Composable
+private fun VideoActionsForOtherSheet(
+    video: Video,
+    isBlocked: Boolean,
+    onDismiss: () -> Unit,
+    onReport: () -> Unit,
+    onBlock: () -> Unit,
+    onOpenProfile: () -> Unit
+) {
+    androidx.compose.material3.ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = EarnySurface,
+        dragHandle = {
+            androidx.compose.material3.BottomSheetDefaults.DragHandle(color = TextWhite40)
+        }
+    ) {
+        Column(Modifier.padding(bottom = 24.dp)) {
+            SheetRow(Icons.Filled.Person, "View profile") { onOpenProfile() }
+            SheetRow(Icons.Filled.Flag, "Report", Color(0xFFFF9800)) { onReport() }
+            SheetRow(
+                Icons.Filled.Block,
+                if (isBlocked) "Unblock user" else "Block user",
+                Color(0xFFE53935)
+            ) { onBlock() }
+        }
+    }
+}
+
+@Composable
+private fun SheetRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    tint: Color = TextWhite,
+    onClick: () -> Unit
+) {
+    Row(
+        Modifier.fillMaxWidth()
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null, onClick = onClick
+            )
+            .padding(horizontal = 24.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, null, tint = tint, modifier = Modifier.size(22.dp))
+        Spacer(Modifier.width(16.dp))
+        Text(label, color = tint, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+    }
+}
+
+@Composable
+private fun ReportDialog(
+    onDismiss: () -> Unit,
+    onSubmit: (reason: String, note: String) -> Unit
+) {
+    val reasons = listOf(
+        "spam", "harassment", "nudity",
+        "violence", "hate_speech", "other"
+    )
+    var selected by remember { mutableStateOf(reasons.first()) }
+    var note by remember { mutableStateOf("") }
+
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = EarnySurface,
+        title = { Text("Report", color = TextWhite, fontWeight = FontWeight.Bold) },
+        text = {
+            Column {
+                Text(
+                    "Why are you reporting?",
+                    color = TextWhite60, fontSize = 13.sp
+                )
+                Spacer(Modifier.height(12.dp))
+                reasons.forEach { r ->
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null
+                            ) { selected = r }
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        androidx.compose.material3.RadioButton(
+                            selected = selected == r,
+                            onClick = { selected = r },
+                            colors = androidx.compose.material3.RadioButtonDefaults
+                                .colors(
+                                    selectedColor = Gold,
+                                    unselectedColor = TextWhite40
+                                )
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            r.replace("_", " ").replaceFirstChar { it.uppercase() },
+                            color = TextWhite,
+                            fontSize = 14.sp
+                        )
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                androidx.compose.material3.OutlinedTextField(
+                    value = note,
+                    onValueChange = { if (it.length <= 200) note = it },
+                    label = { Text("Note (optional)", color = TextWhite40) },
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 60.dp),
+                    colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = TextWhite,
+                        unfocusedTextColor = TextWhite,
+                        focusedBorderColor = Gold,
+                        unfocusedBorderColor = EarnyBorder,
+                        cursorColor = Gold
+                    )
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onSubmit(selected, note) }) {
+                Text("Submit", color = Gold, fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = TextWhite)
+            }
+        }
+    )
 }
 
 @Composable
@@ -242,7 +457,8 @@ private fun VideoPage(
     onToggleFollow: () -> Unit,
     onBecameVisible: () -> Unit,
     onOpenProfile: () -> Unit,
-    onOpenComments: () -> Unit
+    onOpenComments: () -> Unit,
+    onLongPress: () -> Unit
 ) {
     var burstKey by remember { mutableStateOf(0) }
     val ctx = LocalContext.current
@@ -262,6 +478,9 @@ private fun VideoPage(
                     },
                     onTap = {
                         if (exo.isPlaying) exo.pause() else exo.play()
+                    },
+                    onLongPress = {
+                        if (!isMine) onLongPress()
                     }
                 )
             }

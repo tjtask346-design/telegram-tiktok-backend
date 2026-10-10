@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.aim.earny.BuildConfig
 import com.aim.earny.data.ApiService
+import com.aim.earny.data.BlockRepository
 import com.aim.earny.data.BookmarkRepository
 import com.aim.earny.data.DocumentMapper
 import com.aim.earny.data.FollowRepository
@@ -34,6 +35,7 @@ class FeedViewModel : ViewModel() {
     private val videoRepo = VideoRepository(api)
     private val followRepo = FollowRepository()
     private val bookmarkRepo = BookmarkRepository()
+    private val blockRepo = BlockRepository()
 
     private val PAGE_SIZE = 10L
 
@@ -57,6 +59,9 @@ class FeedViewModel : ViewModel() {
 
     private val _followingIds = MutableStateFlow<Set<String>>(emptySet())
     val followingIds = _followingIds.asStateFlow()
+
+    private val _blockedUids = MutableStateFlow<Set<String>>(emptySet())
+    val blockedUids = _blockedUids.asStateFlow()
 
     private val _bookmarkedIds = MutableStateFlow<Set<String>>(emptySet())
     val bookmarkedIds = _bookmarkedIds.asStateFlow()
@@ -84,6 +89,12 @@ class FeedViewModel : ViewModel() {
                 _videos.value = snap.documents.map { DocumentMapper.video(it) }
                 lastDoc = snap.documents.lastOrNull()
                 _hasMore.value = snap.size() >= PAGE_SIZE
+
+                // Load blocked uids
+                val meB0 = auth.currentUser?.uid
+                if (meB0 != null) {
+                    runCatching { _blockedUids.value = blockRepo.myBlockedUids() }
+                }
 
                 // Load my bookmarks + follows
                 val me = auth.currentUser?.uid
@@ -228,4 +239,20 @@ class FeedViewModel : ViewModel() {
         val following = _followingIds.value
         return _videos.value.filter { following.contains(it.uploader) }
     }
+
+
+    fun toggleBlock(targetUid: String) {
+        if (targetUid.isBlank()) return
+        viewModelScope.launch {
+            try {
+                val nowBlocked = blockRepo.toggle(targetUid)
+                _blockedUids.value = if (nowBlocked)
+                    _blockedUids.value + targetUid else _blockedUids.value - targetUid
+                // Refresh feed to hide/show their videos
+                load()
+            } catch (_: Exception) {}
+        }
+    }
+
+    fun isBlocked(uid: String): Boolean = _blockedUids.value.contains(uid)
 }
