@@ -1,8 +1,5 @@
 package com.aim.earny.ui.screens.profile
 
-import android.net.Uri
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -13,21 +10,19 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.aim.earny.BuildConfig
-import com.aim.earny.data.ApiService
-import com.aim.earny.data.ProfilePicRepository
 import com.aim.earny.ui.components.SafeAvatar
 import com.aim.earny.ui.theme.*
 import com.google.firebase.auth.FirebaseAuth
@@ -36,8 +31,6 @@ import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
-import retrofit2.Retrofit
-import retrofit2.converter.gson.GsonConverterFactory
 
 private enum class NameState { Idle, Checking, Available, Taken, Invalid }
 
@@ -46,20 +39,11 @@ fun EditProfileScreen(
     onBack: () -> Unit,
     onSaved: () -> Unit
 ) {
+    // ---- All hooks at the top, in fixed order ----
     val auth = remember { FirebaseAuth.getInstance() }
     val db = remember { FirebaseFirestore.getInstance() }
     val scope = rememberCoroutineScope()
-    val context = LocalContext.current
     val uid = auth.currentUser?.uid
-
-    val picRepo = remember {
-        val api = Retrofit.Builder()
-            .baseUrl(BuildConfig.API_BASE.trimEnd('/') + "/")
-            .addConverterFactory(GsonConverterFactory.create())
-            .build()
-            .create(ApiService::class.java)
-        ProfilePicRepository(api)
-    }
 
     var firstName by remember { mutableStateOf("") }
     var lastName by remember { mutableStateOf("") }
@@ -67,31 +51,13 @@ fun EditProfileScreen(
     var originalUsername by remember { mutableStateOf("") }
     var bio by remember { mutableStateOf("") }
     var link by remember { mutableStateOf("") }
+    var picMsgId by remember { mutableStateOf(0L) }
     var loading by remember { mutableStateOf(true) }
     var saving by remember { mutableStateOf(false) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
     var nameState by remember { mutableStateOf(NameState.Idle) }
-    var picMsgId by remember { mutableStateOf(0L) }
-    var uploadingPic by remember { mutableStateOf(false) }
 
-    val picPicker = rememberLauncherForActivityResult(
-        ActivityResultContracts.GetContent()
-    ) { uri ->
-        if (uri == null) return@rememberLauncherForActivityResult
-        uploadingPic = true
-        errorMsg = null
-        scope.launch {
-            try {
-                val newId = picRepo.upload(context, uri)
-                picMsgId = newId
-            } catch (e: Exception) {
-                errorMsg = "Pic upload failed: ${e.message}"
-            } finally {
-                uploadingPic = false
-            }
-        }
-    }
-
+    // ---- Load profile once ----
     LaunchedEffect(uid) {
         if (uid == null) { loading = false; return@LaunchedEffect }
         try {
@@ -104,20 +70,19 @@ fun EditProfileScreen(
             link = doc.getString("link") ?: ""
             picMsgId = (doc.get("profilePicMsgId") as? Number)?.toLong() ?: 0L
         } catch (e: Exception) {
-            errorMsg = "Couldn't load: ${e.message}"
+            errorMsg = "Couldn't load profile"
         }
         loading = false
     }
 
+    // ---- Debounced username check ----
     LaunchedEffect(username) {
         val clean = username.trim().lowercase()
         if (clean == originalUsername) { nameState = NameState.Idle; return@LaunchedEffect }
-        when {
-            clean.isEmpty() -> { nameState = NameState.Idle; return@LaunchedEffect }
-            clean.length < 3 -> { nameState = NameState.Invalid; return@LaunchedEffect }
-            !clean.matches(Regex("^[a-z0-9_.]+$")) -> {
-                nameState = NameState.Invalid; return@LaunchedEffect
-            }
+        if (clean.isEmpty()) { nameState = NameState.Idle; return@LaunchedEffect }
+        if (clean.length < 3) { nameState = NameState.Invalid; return@LaunchedEffect }
+        if (!clean.matches(Regex("^[a-z0-9_.]+$"))) {
+            nameState = NameState.Invalid; return@LaunchedEffect
         }
         nameState = NameState.Checking
         delay(450)
@@ -126,7 +91,6 @@ fun EditProfileScreen(
             nameState = if (!doc.exists()) NameState.Available else NameState.Taken
         } catch (e: Exception) {
             nameState = NameState.Idle
-            errorMsg = "Check failed: ${e.message}"
         }
     }
 
@@ -137,7 +101,9 @@ fun EditProfileScreen(
                 || nameState == NameState.Available)
             && !saving
 
+    // ---- UI ----
     Column(Modifier.fillMaxSize().background(EarnyBlack)) {
+        // Top bar
         Row(
             Modifier.fillMaxWidth().padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -166,40 +132,22 @@ fun EditProfileScreen(
                 .padding(horizontal = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Box(contentAlignment = Alignment.BottomEnd) {
-                SafeAvatar(
-                    name = username.ifBlank { firstName.ifBlank { "?" } },
-                    size = 100.dp,
-                    picMsgId = picMsgId
-                )
-                Box(
-                    Modifier.size(32.dp).background(Gold, CircleShape)
-                        .clickable(
-                            enabled = !uploadingPic,
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null
-                        ) { picPicker.launch("image/*") },
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (uploadingPic) {
-                        CircularProgressIndicator(
-                            color = EarnyBlack, strokeWidth = 2.dp,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    } else {
-                        Icon(Icons.Filled.CameraAlt, null, tint = EarnyBlack, modifier = Modifier.size(18.dp))
-                    }
-                }
-            }
+            // Avatar (display only — no upload)
+            SafeAvatar(
+                name = username.ifBlank { firstName.ifBlank { "?" } },
+                size = 100.dp,
+                picMsgId = picMsgId
+            )
 
             Spacer(Modifier.height(8.dp))
             Text(
-                if (uploadingPic) "Uploading…" else "Tap camera to change",
+                "Profile picture upload coming soon",
                 color = TextWhite40, fontSize = 11.sp
             )
 
             Spacer(Modifier.height(24.dp))
 
+            // Name row
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedTextField(
                     value = firstName,
@@ -221,6 +169,7 @@ fun EditProfileScreen(
 
             Spacer(Modifier.height(12.dp))
 
+            // Username
             OutlinedTextField(
                 value = username,
                 onValueChange = {
@@ -266,6 +215,7 @@ fun EditProfileScreen(
 
             Spacer(Modifier.height(16.dp))
 
+            // Bio
             OutlinedTextField(
                 value = bio,
                 onValueChange = { if (it.length <= 80) bio = it },
@@ -281,18 +231,16 @@ fun EditProfileScreen(
 
             Spacer(Modifier.height(16.dp))
 
+            // Link
             OutlinedTextField(
                 value = link,
                 onValueChange = { if (it.length <= 120) link = it },
                 label = { Text("Website link") },
-                placeholder = { Text("example.com or https://...", color = TextWhite40) },
+                placeholder = { Text("example.com", color = TextWhite40) },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                 modifier = Modifier.fillMaxWidth(),
-                colors = fieldColors(),
-                leadingIcon = {
-                    Icon(Icons.Filled.Link, null, tint = Gold, modifier = Modifier.size(18.dp))
-                }
+                colors = fieldColors()
             )
 
             if (errorMsg != null) {
@@ -302,6 +250,7 @@ fun EditProfileScreen(
 
             Spacer(Modifier.height(28.dp))
 
+            // Save
             Button(
                 enabled = canSubmit,
                 onClick = {
@@ -368,7 +317,7 @@ private fun fieldColors() = OutlinedTextFieldDefaults.colors(
     focusedTextColor = TextWhite,
     unfocusedTextColor = TextWhite,
     focusedBorderColor = Gold,
-    unfocusedBorderColor = Color(0xFF2A2A2A),
+    unfocusedBorderColor = EarnyBorder,
     focusedLabelColor = Gold,
     unfocusedLabelColor = TextWhite40,
     cursorColor = Gold,

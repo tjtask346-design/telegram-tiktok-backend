@@ -25,6 +25,32 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Global crash logger → SharedPreferences
+        val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, ex ->
+            try {
+                val prefs = getSharedPreferences("earny_crash", MODE_PRIVATE)
+                prefs.edit()
+                    .putString("last_error", android.util.Log.getStackTraceString(ex))
+                    .putLong("when", System.currentTimeMillis())
+                    .apply()
+            } catch (_: Exception) {}
+            defaultHandler?.uncaughtException(thread, ex)
+        }
+
+        // Show last crash on launch
+        val crashPrefs = getSharedPreferences("earny_crash", MODE_PRIVATE)
+        val lastError = crashPrefs.getString("last_error", null)
+        if (lastError != null) {
+            android.widget.Toast.makeText(
+                this,
+                "Previous crash: ${lastError.take(200)}",
+                android.widget.Toast.LENGTH_LONG
+            ).show()
+            crashPrefs.edit().remove("last_error").apply()
+        }
+
         setContent {
             EarnyTheme { RootApp() }
         }
