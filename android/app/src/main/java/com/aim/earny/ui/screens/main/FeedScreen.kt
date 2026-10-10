@@ -120,8 +120,7 @@ fun FeedScreen(vm: FeedViewModel = viewModel()) {
 
                 VerticalPager(
                     state = pager,
-                    modifier = Modifier.fillMaxSize(),
-                    beyondViewportPageCount = 1
+                    modifier = Modifier.fillMaxSize()
                 ) { page ->
                     VideoPage(
                         video = videos[page],
