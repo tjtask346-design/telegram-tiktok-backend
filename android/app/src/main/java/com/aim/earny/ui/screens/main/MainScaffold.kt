@@ -183,6 +183,13 @@ fun MainScaffold(onSignOut: () -> Unit) {
                     onOpenProfile = { uid ->
                         showSearch = false
                         showOtherProfile = uid
+                    },
+                    onOpenVideo = { v ->
+                        playerVideo = v
+                    },
+                    onOpenHashtag = { tag ->
+                        showSearch = false
+                        openHashtag = tag
                     }
                 )
             }
