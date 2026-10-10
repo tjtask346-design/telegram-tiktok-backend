@@ -94,15 +94,13 @@ fun EditProfileScreen(
         }
         nameState = NameState.Checking
         delay(450)
-        val available = runCatching {
-            val snap = db.collection("users")
-                .whereEqualTo("usernameLower", clean)
-                .limit(1)
-                .get()
-                .await()
-            snap.isEmpty
-        }.getOrDefault(false)
-        nameState = if (available) NameState.Available else NameState.Taken
+        try {
+            val doc = db.collection("usernames").document(clean).get().await()
+            nameState = if (!doc.exists()) NameState.Available else NameState.Taken
+        } catch (e: Exception) {
+            nameState = NameState.Idle
+            errorMsg = "Couldn't check: ${e.message}"
+        }
     }
 
     val canSubmit = firstName.isNotBlank()
@@ -260,13 +258,33 @@ fun EditProfileScreen(
                     errorMsg = null
                     scope.launch {
                         runCatching {
+                            val newClean = username.trim().lowercase()
+                            val oldClean = originalUsername
+
+                            // If username changed, swap the usernames collection entry
+                            if (newClean != oldClean) {
+                                // Reserve new
+                                db.collection("usernames").document(newClean).set(
+                                    mapOf(
+                                        "uid" to uid,
+                                        "username" to username.trim()
+                                    )
+                                ).await()
+                                // Release old
+                                if (oldClean.isNotBlank()) {
+                                    runCatching {
+                                        db.collection("usernames").document(oldClean).delete().await()
+                                    }
+                                }
+                            }
+
                             db.collection("users").document(uid).set(
                                 mapOf(
                                     "firstName" to firstName.trim(),
                                     "lastName" to lastName.trim(),
                                     "fullName" to "$firstName $lastName".trim(),
                                     "username" to username.trim(),
-                                    "usernameLower" to username.trim().lowercase(),
+                                    "usernameLower" to newClean,
                                     "bio" to bio.trim(),
                                     "link" to link.trim()
                                 ),

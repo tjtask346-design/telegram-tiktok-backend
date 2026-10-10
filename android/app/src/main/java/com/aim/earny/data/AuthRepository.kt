@@ -12,17 +12,20 @@ class AuthRepository(
 ) {
     val currentUser get() = auth.currentUser
 
-    /** Returns true if username is free (case-insensitive) */
+    /**
+     * Public check — reads from the `usernames` collection which is
+     * world-readable (contains only uid, no PII). Works even when
+     * the user is not yet authenticated.
+     *
+     * THROWS on network/permission errors — caller should distinguish
+     * "taken" from "check failed".
+     */
     suspend fun isUsernameAvailable(username: String): Boolean {
         val clean = username.trim().lowercase()
         if (clean.length < 3) return false
         if (!clean.matches(Regex("^[a-z0-9_.]+$"))) return false
-        val snap = db.collection("users")
-            .whereEqualTo("usernameLower", clean)
-            .limit(1)
-            .get()
-            .await()
-        return snap.isEmpty
+        val doc = db.collection("usernames").document(clean).get().await()
+        return !doc.exists()
     }
 
     suspend fun signUpWithDetails(
@@ -42,7 +45,7 @@ class AuthRepository(
             throw IllegalArgumentException("Username: only a-z, 0-9, _ and . allowed")
         }
 
-        // Final uniqueness check
+        // Final uniqueness check before creating auth user
         if (!isUsernameAvailable(clean)) {
             throw IllegalStateException("Username already taken")
         }
@@ -57,24 +60,38 @@ class AuthRepository(
             ).await()
         }
 
-        runCatching {
-            db.collection("users").document(user.uid).set(
-                mapOf(
-                    "uid" to user.uid,
-                    "firstName" to firstName.trim(),
-                    "lastName" to lastName.trim(),
-                    "fullName" to fullName,
-                    "username" to username.trim(),
-                    "usernameLower" to clean,
-                    "email" to email.trim(),
-                    "bio" to "",
-                    "followers" to 0,
-                    "videoCount" to 0,
-                    "emailVerified" to false,
-                    "createdAt" to FieldValue.serverTimestamp()
-                )
-            ).await()
-        }
+        // Atomic write: user doc + username reservation
+        val batch = db.batch()
+        batch.set(
+            db.collection("users").document(user.uid),
+            mapOf(
+                "uid" to user.uid,
+                "firstName" to firstName.trim(),
+                "lastName" to lastName.trim(),
+                "fullName" to fullName,
+                "username" to username.trim(),
+                "usernameLower" to clean,
+                "email" to email.trim(),
+                "bio" to "",
+                "link" to "",
+                "followers" to 0,
+                "following" to 0,
+                "totalLikes" to 0,
+                "videoCount" to 0,
+                "verified" to false,
+                "emailVerified" to false,
+                "createdAt" to FieldValue.serverTimestamp()
+            )
+        )
+        batch.set(
+            db.collection("usernames").document(clean),
+            mapOf(
+                "uid" to user.uid,
+                "username" to username.trim(),
+                "reservedAt" to FieldValue.serverTimestamp()
+            )
+        )
+        batch.commit().await()
 
         user.sendEmailVerification().await()
     }
@@ -111,11 +128,12 @@ class AuthRepository(
         val m = e.message ?: return "Something went wrong"
         return when {
             m.contains("already in use", true) -> "This email is already registered"
-            m.contains("username already taken", true) -> "That username is taken"
+            m.contains("Username already taken", true) -> "That username is taken"
             m.contains("password is invalid", true) -> "Wrong password"
             m.contains("no user record", true) -> "No account with this email"
             m.contains("badly formatted", true) -> "Invalid email format"
             m.contains("network", true) -> "Network error — check internet"
+            m.contains("PERMISSION_DENIED", true) -> "Permission denied — check Firestore rules"
             m.contains("too many requests", true) -> "Too many attempts. Wait a minute."
             else -> m
         }

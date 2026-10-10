@@ -47,8 +47,14 @@ class AuthViewModel(
         _usernameState.value = UsernameState.Checking
         checkJob = viewModelScope.launch {
             delay(450) // debounce
-            val ok = runCatching { repo.isUsernameAvailable(clean) }.getOrDefault(false)
-            _usernameState.value = if (ok) UsernameState.Available else UsernameState.Taken
+            try {
+                val ok = repo.isUsernameAvailable(clean)
+                _usernameState.value = if (ok) UsernameState.Available else UsernameState.Taken
+            } catch (e: Exception) {
+                // Network / permission error — do NOT mark as "taken"
+                _usernameState.value = UsernameState.Idle
+                _error.value = "Couldn't check username: ${e.message}"
+            }
         }
     }
 
