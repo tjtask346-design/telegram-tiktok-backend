@@ -48,3 +48,14 @@ data class InboxMessage(
     val unread: Boolean = false,
     val timestamp: Long = 0L
 )
+
+
+data class Comment(
+    val id: String = "",
+    val videoId: String = "",
+    val uid: String = "",
+    val username: String = "",
+    val text: String = "",
+    val createdAtMs: Long = 0L,
+    val isMine: Boolean = false
+)

@@ -86,4 +86,14 @@ object DocumentMapper {
     )
 
     fun message(doc: QueryDocumentSnapshot): InboxMessage = message(doc as DocumentSnapshot)
+
+    fun comment(doc: DocumentSnapshot, meUid: String): Comment = Comment(
+        id = doc.id,
+        videoId = doc.str("videoId"),
+        uid = doc.str("uid"),
+        username = doc.str("username"),
+        text = doc.str("text"),
+        createdAtMs = doc.timestampMs("createdAt"),
+        isMine = doc.str("uid") == meUid
+    )
 }

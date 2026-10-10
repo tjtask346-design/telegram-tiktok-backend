@@ -39,6 +39,7 @@ import com.aim.earny.BuildConfig
 import com.aim.earny.data.AppEvents
 import com.aim.earny.data.Video
 import com.aim.earny.data.formatCount
+import com.aim.earny.ui.components.CommentsSheet
 import com.aim.earny.ui.theme.*
 import com.aim.earny.vm.FeedViewModel
 import com.google.firebase.auth.FirebaseAuth
@@ -55,6 +56,7 @@ fun FeedScreen(
     val followingIds by vm.followingIds.collectAsStateWithLifecycle()
 
     var tab by remember { mutableStateOf(1) } // 0 = Following, 1 = For You
+    var commentsForVideo by remember { mutableStateOf<String?>(null) }
 
     val feedRefresh by AppEvents.feedRefresh.collectAsStateWithLifecycle()
     LaunchedEffect(feedRefresh) { vm.load() }
@@ -154,7 +156,8 @@ fun FeedScreen(
                         onToggleLike = { vm.toggleLike(v) },
                         onToggleFollow = { vm.toggleFollow(v.uploader) },
                         onBecameVisible = { vm.onPageVisible(v) },
-                        onOpenProfile = { onOpenProfile(v.uploader) }
+                        onOpenProfile = { onOpenProfile(v.uploader) },
+                        onOpenComments = { commentsForVideo = v.id }
                     )
                 }
             }
@@ -176,6 +179,13 @@ fun FeedScreen(
                 modifier = Modifier.size(26.dp)
             )
         }
+    }
+
+    commentsForVideo?.let { vid ->
+        CommentsSheet(
+            videoId = vid,
+            onDismiss = { commentsForVideo = null }
+        )
     }
 }
 
@@ -211,7 +221,8 @@ private fun VideoPage(
     onToggleLike: () -> Unit,
     onToggleFollow: () -> Unit,
     onBecameVisible: () -> Unit,
-    onOpenProfile: () -> Unit
+    onOpenProfile: () -> Unit,
+    onOpenComments: () -> Unit
 ) {
     var burstKey by remember { mutableStateOf(0) }
     val ctx = LocalContext.current
@@ -345,7 +356,7 @@ private fun VideoPage(
                 tint = if (isLiked) HeartRed else Color.White
             ) { onToggleLike() }
 
-            ActionItem(Icons.Filled.ChatBubble, formatCount(video.comments)) {}
+            ActionItem(Icons.Filled.ChatBubble, formatCount(video.comments)) { onOpenComments() }
             ActionItem(Icons.Filled.Bookmark, "0") {}
             ActionItem(Icons.Filled.Share, formatCount(video.likes)) {
                 val url = BuildConfig.API_BASE.trimEnd('/') + "/stream/" + video.telegramMsgId
