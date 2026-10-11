@@ -120,22 +120,86 @@ fun FeedScreen(
                     }
                 }
 
+                // ═══ Robust ExoPlayer with 30s timeout + auto-retry ═══
                 val exo = remember {
-                    ExoPlayer.Builder(ctx).build().apply {
-                        repeatMode = ExoPlayer.REPEAT_MODE_ONE
-                        playWhenReady = true
+                    val httpFactory = androidx.media3.datasource.DefaultHttpDataSource.Factory()
+                        .setConnectTimeoutMs(30_000)
+                        .setReadTimeoutMs(30_000)
+                        .setAllowCrossProtocolRedirects(true)
+                        .setUserAgent("Earny/1.0 (ExoPlayer)")
+                    val dsFactory = androidx.media3.datasource.DefaultDataSource.Factory(ctx, httpFactory)
+                    val mediaSourceFactory = androidx.media3.exoplayer.source.DefaultMediaSourceFactory(dsFactory)
+                    ExoPlayer.Builder(ctx)
+                        .setMediaSourceFactory(mediaSourceFactory)
+                        .build()
+                        .apply {
+                            repeatMode = ExoPlayer.REPEAT_MODE_ONE
+                            playWhenReady = true
+                        }
+                }
+
+                var retryAttempt by remember { mutableStateOf(0) }
+                var playingVideoId by remember { mutableStateOf<String?>(null) }
+
+                DisposableEffect(exo) {
+                    val listener = object : androidx.media3.common.Player.Listener {
+                        override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                            if (retryAttempt < 2) retryAttempt++
+                        }
+                        override fun onPlaybackStateChanged(state: Int) {
+                            if (state == androidx.media3.common.Player.STATE_READY) {
+                                retryAttempt = 0
+                            }
+                        }
+                    }
+                    exo.addListener(listener)
+                    onDispose {
+                        exo.removeListener(listener)
+                        exo.release()
                     }
                 }
-                DisposableEffect(Unit) { onDispose { exo.release() } }
 
+                // Auto-retry with backoff
+                LaunchedEffect(retryAttempt, playingVideoId) {
+                    if (retryAttempt in 1..2 && playingVideoId != null) {
+                        delay(700L * retryAttempt)
+                        runCatching {
+                            exo.prepare()
+                            exo.play()
+                        }
+                    }
+                }
+
+                // Warmup watchdog — if not ready in 4s, force retry
+                LaunchedEffect(playingVideoId, videos.size) {
+                    if (playingVideoId == null) return@LaunchedEffect
+                    var waited = 0L
+                    while (waited < 4000L) {
+                        delay(500L)
+                        waited += 500L
+                        val st = exo.playbackState
+                        if (st == androidx.media3.common.Player.STATE_READY) {
+                            return@LaunchedEffect
+                        }
+                    }
+                    if (retryAttempt < 2) retryAttempt++
+                }
+
+                // Load media on page change
                 LaunchedEffect(currentIndex, videos.size) {
                     if (videos.isNotEmpty() && currentIndex in videos.indices) {
                         val v = videos[currentIndex]
-                        if (v.telegramMsgId > 0) {
+                        if (v.telegramMsgId > 0 && playingVideoId != v.id) {
+                            playingVideoId = v.id
+                            retryAttempt = 0
                             val url = BuildConfig.API_BASE.trimEnd('/') + "/stream/" + v.telegramMsgId
-                            exo.setMediaItem(MediaItem.fromUri(url))
-                            exo.prepare()
-                            exo.play()
+                            runCatching {
+                                exo.stop()
+                                exo.clearMediaItems()
+                                exo.setMediaItem(MediaItem.fromUri(url))
+                                exo.prepare()
+                                exo.play()
+                            }
                         }
                     }
                 }
