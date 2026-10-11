@@ -142,6 +142,17 @@ fun FeedScreen(
                 var retryAttempt by remember { mutableStateOf(0) }
                 var playingVideoId by remember { mutableStateOf<String?>(null) }
 
+                // ---- Pause when any overlay is on top of us ----
+                val overlayActive by AppEvents.overlayActive.collectAsStateWithLifecycle()
+                LaunchedEffect(overlayActive, exo) {
+                    if (overlayActive) {
+                        if (exo.isPlaying) exo.pause()
+                    } else {
+                        // Only auto-resume if we're on a valid page with media
+                        if (playingVideoId != null) exo.play()
+                    }
+                }
+
                 DisposableEffect(exo) {
                     val listener = object : androidx.media3.common.Player.Listener {
                         override fun onPlayerError(error: androidx.media3.common.PlaybackException) {

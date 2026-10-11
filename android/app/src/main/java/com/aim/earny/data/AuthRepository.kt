@@ -60,38 +60,51 @@ class AuthRepository(
             ).await()
         }
 
-        // Atomic write: user doc + username reservation
-        val batch = db.batch()
-        batch.set(
-            db.collection("users").document(user.uid),
-            mapOf(
-                "uid" to user.uid,
-                "firstName" to firstName.trim(),
-                "lastName" to lastName.trim(),
-                "fullName" to fullName,
-                "username" to username.trim(),
-                "usernameLower" to clean,
-                "email" to email.trim(),
-                "bio" to "",
-                "link" to "",
-                "followers" to 0,
-                "following" to 0,
-                "totalLikes" to 0,
-                "videoCount" to 0,
-                "verified" to false,
-                "emailVerified" to false,
-                "createdAt" to FieldValue.serverTimestamp()
-            )
-        )
-        batch.set(
-            db.collection("usernames").document(clean),
-            mapOf(
-                "uid" to user.uid,
-                "username" to username.trim(),
-                "reservedAt" to FieldValue.serverTimestamp()
-            )
-        )
-        batch.commit().await()
+        try {
+            // Atomic transaction: reserve username AND write user doc.
+            // Prevents two users racing for the same username.
+            db.runTransaction { txn ->
+                val unameRef = db.collection("usernames").document(clean)
+                val existing = txn.get(unameRef)
+                if (existing.exists()) {
+                    throw IllegalStateException("Username already taken")
+                }
+                txn.set(
+                    db.collection("users").document(user.uid),
+                    mapOf(
+                        "uid" to user.uid,
+                        "firstName" to firstName.trim(),
+                        "lastName" to lastName.trim(),
+                        "fullName" to fullName,
+                        "username" to username.trim(),
+                        "usernameLower" to clean,
+                        "email" to email.trim(),
+                        "bio" to "",
+                        "link" to "",
+                        "followers" to 0,
+                        "following" to 0,
+                        "totalLikes" to 0,
+                        "videoCount" to 0,
+                        "verified" to false,
+                        "emailVerified" to false,
+                        "createdAt" to FieldValue.serverTimestamp()
+                    )
+                )
+                txn.set(
+                    unameRef,
+                    mapOf(
+                        "uid" to user.uid,
+                        "username" to username.trim(),
+                        "reservedAt" to FieldValue.serverTimestamp()
+                    )
+                )
+                null
+            }.await()
+        } catch (e: Exception) {
+            // Rollback: delete orphan auth user so the email can be reused
+            runCatching { user.delete().await() }
+            throw e
+        }
 
         user.sendEmailVerification().await()
     }

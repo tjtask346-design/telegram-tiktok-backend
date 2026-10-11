@@ -69,7 +69,9 @@ class FeedViewModel : ViewModel() {
     private var lastDoc: DocumentSnapshot? = null
     private val viewedIds = mutableSetOf<String>()
 
-    init { load() }
+    // Loading is triggered by FeedScreen's LaunchedEffect(feedRefresh)
+    // on first composition. An init{} block here would cause a duplicate
+    // network fetch on cold start.
 
     /** Fresh load from top — resets pagination */
     fun load() {

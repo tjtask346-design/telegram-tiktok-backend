@@ -1,5 +1,6 @@
 package com.aim.earny.ui.screens.main
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -54,6 +55,31 @@ fun MainScaffold(onSignOut: () -> Unit) {
                 hasUnread = (snap?.size() ?: 0) > 0
             }
         onDispose { runCatching { reg.remove() } }
+    }
+
+    // ---- Which overlays are currently shown? ----
+    val anyOverlay = showNewPost || showEditProfile || showAddFriends ||
+            showOtherProfile != null || showSearch || showSettings ||
+            openHashtag != null || openChat != null || playerVideo != null
+
+    // ---- Tell FeedScreen (and any other player) to pause/resume ----
+    LaunchedEffect(anyOverlay) {
+        AppEvents.setOverlayActive(anyOverlay)
+    }
+
+    // ---- Hardware back button: close topmost overlay ----
+    BackHandler(enabled = anyOverlay) {
+        when {
+            showSettings -> showSettings = false
+            showSearch -> showSearch = false
+            showEditProfile -> showEditProfile = false
+            showAddFriends -> showAddFriends = false
+            showNewPost -> showNewPost = false
+            playerVideo != null -> playerVideo = null
+            openHashtag != null -> openHashtag = null
+            openChat != null -> openChat = null
+            showOtherProfile != null -> showOtherProfile = null
+        }
     }
 
     Box(Modifier.fillMaxSize().background(EarnyBlack)) {

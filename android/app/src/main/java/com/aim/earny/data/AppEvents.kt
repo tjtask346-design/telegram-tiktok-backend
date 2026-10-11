@@ -24,4 +24,12 @@ object AppEvents {
     fun triggerProfileRefresh() {
         _profileRefresh.value = _profileRefresh.value + 1
     }
+
+    // ---- Overlay active (pause background video players) ----
+    private val _overlayActive = MutableStateFlow(false)
+    val overlayActive: StateFlow<Boolean> = _overlayActive
+
+    fun setOverlayActive(active: Boolean) {
+        _overlayActive.value = active
+    }
 }
