@@ -34,6 +34,9 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.MediaItem
+import androidx.media3.datasource.cache.CacheDataSource
+import androidx.media3.exoplayer.DefaultLoadControl
+import com.aim.earny.data.PlayerCache
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
@@ -122,20 +125,72 @@ fun FeedScreen(
                 }
 
                 // ═══ Robust ExoPlayer with 30s timeout + auto-retry ═══
-                val exo = remember {
-                    val httpFactory = androidx.media3.datasource.DefaultHttpDataSource.Factory()
-                        .setConnectTimeoutMs(30_000)
-                        .setReadTimeoutMs(30_000)
+                // ── Shared cache (main player + preloader use same instance) ──
+                val simpleCache = remember { PlayerCache.get(ctx) }
+
+                // ── HTTP upstream: robust timeouts, redirects, UA ──
+                val httpFactory = remember {
+                    androidx.media3.datasource.DefaultHttpDataSource.Factory()
+                        .setConnectTimeoutMs(20_000)
+                        .setReadTimeoutMs(20_000)
                         .setAllowCrossProtocolRedirects(true)
                         .setUserAgent("Earny/1.0 (ExoPlayer)")
-                    val dsFactory = androidx.media3.datasource.DefaultDataSource.Factory(ctx, httpFactory)
-                    val mediaSourceFactory = androidx.media3.exoplayer.source.DefaultMediaSourceFactory(dsFactory)
+                }
+
+                // ── Cache-aware data source factory ──
+                val cacheFactory = remember {
+                    CacheDataSource.Factory()
+                        .setCache(simpleCache)
+                        .setUpstreamDataSourceFactory(httpFactory)
+                        .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+                }
+                val dsFactory = remember {
+                    androidx.media3.datasource.DefaultDataSource.Factory(ctx, cacheFactory)
+                }
+                val mediaSourceFactory = remember {
+                    androidx.media3.exoplayer.source.DefaultMediaSourceFactory(dsFactory)
+                }
+
+                // ── Aggressive buffer tuning: play after 500ms, not 2500ms ──
+                val loadControl = remember {
+                    DefaultLoadControl.Builder()
+                        .setBufferDurationsMs(
+                            15_000,   // minBufferMs       — keep at least 15s
+                            50_000,   // maxBufferMs       — cap at 50s
+                            500,      // bufferForPlaybackMs       ← 2500 → 500
+                            1_500     // bufferForPlaybackAfterRebufferMs
+                        )
+                        .setPrioritizeTimeOverSizeThresholds(true)
+                        .build()
+                }
+
+                val exo = remember {
                     ExoPlayer.Builder(ctx)
                         .setMediaSourceFactory(mediaSourceFactory)
+                        .setLoadControl(loadControl)
                         .build()
                         .apply {
                             repeatMode = ExoPlayer.REPEAT_MODE_ONE
                             playWhenReady = true
+                        }
+                }
+
+                // ── Silent preloader: pre-populates cache for the next video ──
+                val preloader = remember {
+                    ExoPlayer.Builder(ctx)
+                        .setMediaSourceFactory(mediaSourceFactory)
+                        .setLoadControl(
+                            DefaultLoadControl.Builder()
+                                .setBufferDurationsMs(
+                                    30_000, 60_000, 2_000, 4_000
+                                )
+                                .setPrioritizeTimeOverSizeThresholds(true)
+                                .build()
+                        )
+                        .build()
+                        .apply {
+                            volume = 0f
+                            playWhenReady = false  // prepare-only, no audio
                         }
                 }
 
@@ -153,7 +208,7 @@ fun FeedScreen(
                     }
                 }
 
-                DisposableEffect(exo) {
+                DisposableEffect(exo, preloader) {
                     val listener = object : androidx.media3.common.Player.Listener {
                         override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                             if (retryAttempt < 2) retryAttempt++
@@ -168,6 +223,7 @@ fun FeedScreen(
                     onDispose {
                         exo.removeListener(listener)
                         exo.release()
+                        preloader.release()
                     }
                 }
 
@@ -212,6 +268,19 @@ fun FeedScreen(
                                 exo.prepare()
                                 exo.play()
                             }
+                        }
+                    }
+
+                    // ── Preload the next video silently so swipe is instant ──
+                    val next = videos.getOrNull(currentIndex + 1)
+                    if (next != null && next.telegramMsgId > 0) {
+                        val nextUrl = BuildConfig.API_BASE.trimEnd('/') +
+                                "/stream/" + next.telegramMsgId
+                        runCatching {
+                            preloader.stop()
+                            preloader.clearMediaItems()
+                            preloader.setMediaItem(MediaItem.fromUri(nextUrl))
+                            preloader.prepare()
                         }
                     }
                 }
