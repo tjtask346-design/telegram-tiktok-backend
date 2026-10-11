@@ -45,14 +45,15 @@ fun MainScaffold(onSignOut: () -> Unit) {
     val uid = FirebaseAuth.getInstance().currentUser?.uid
     var hasUnread by remember { mutableStateOf(false) }
 
-    LaunchedEffect(uid) {
-        if (uid == null) return@LaunchedEffect
-        db.collection("users").document(uid)
+    DisposableEffect(uid) {
+        if (uid == null) return@DisposableEffect onDispose {}
+        val reg = db.collection("users").document(uid)
             .collection("notifications")
             .whereEqualTo("unread", true)
             .addSnapshotListener { snap, _ ->
                 hasUnread = (snap?.size() ?: 0) > 0
             }
+        onDispose { runCatching { reg.remove() } }
     }
 
     Box(Modifier.fillMaxSize().background(EarnyBlack)) {

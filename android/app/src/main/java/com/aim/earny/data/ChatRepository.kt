@@ -60,10 +60,13 @@ class ChatRepository(
         val me = auth.currentUser?.uid ?: ""
         val reg: ListenerRegistration = db.collection("chats").document(chatId)
             .collection("messages")
-            .orderBy("createdAt", Query.Direction.ASCENDING)
+            .orderBy("createdAt", Query.Direction.DESCENDING)
             .limit(200)
             .addSnapshotListener { snap, _ ->
-                val list = snap?.documents?.map { DocumentMapper.chatMessage(it, me) }
+                // DESCENDING + limit(200) => newest 200. Reverse for chat UI.
+                val list = snap?.documents
+                    ?.map { DocumentMapper.chatMessage(it, me) }
+                    ?.reversed()
                     ?: emptyList()
                 trySend(list)
             }

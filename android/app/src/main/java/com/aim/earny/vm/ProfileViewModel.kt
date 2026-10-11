@@ -107,7 +107,31 @@ class ProfileViewModel : ViewModel() {
                 _reposts.value = all.filter { it.isRepost }
             }
 
-            _liked.value = emptyList()
+            // Liked tab: only for own profile. Scan user's likes, chunk fetch.
+            if (_isOwnProfile.value) {
+                runCatching {
+                    val likedIds = mutableListOf<String>()
+                    val vidsSnap = db.collection("videos").limit(300).get().await()
+                    for (v in vidsSnap.documents) {
+                        val like = v.reference.collection("likes")
+                            .document(uid).get().await()
+                        if (like.exists()) likedIds.add(v.id)
+                    }
+                    val out = mutableListOf<Video>()
+                    likedIds.chunked(10).forEach { chunk ->
+                        if (chunk.isEmpty()) return@forEach
+                        val snap = db.collection("videos")
+                            .whereIn(
+                                com.google.firebase.firestore.FieldPath.documentId(),
+                                chunk
+                            ).get().await()
+                        out += snap.documents.map { DocumentMapper.video(it) }
+                    }
+                    _liked.value = out.sortedByDescending { it.createdAtMs }
+                }
+            } else {
+                _liked.value = emptyList()
+            }
 
             // Saved: only for own profile
             if (_isOwnProfile.value) {

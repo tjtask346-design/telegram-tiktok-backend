@@ -467,16 +467,18 @@ private fun ProfileHeader(
                 size = 100.dp,
                 picMsgId = profile.profilePicMsgId
             )
-            Box(
-                Modifier.size(26.dp).background(Gold, CircleShape)
-                    .border(3.dp, EarnyBlack, CircleShape)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null, onClick = onEdit
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Filled.Add, null, tint = EarnyBlack, modifier = Modifier.size(14.dp))
+            if (isOwn) {
+                Box(
+                    Modifier.size(26.dp).background(Gold, CircleShape)
+                        .border(3.dp, EarnyBlack, CircleShape)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null, onClick = onEdit
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Filled.Add, null, tint = EarnyBlack, modifier = Modifier.size(14.dp))
+                }
             }
         }
 

@@ -302,7 +302,7 @@ fun NewPostScreen(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null
                         ) {
-                            vm.upload(context, selectedUri!!, caption, onPosted)
+                            vm.upload(context, selectedUri!!, caption) { /* nav handled by LaunchedEffect(state) */ }
                         }
                         .padding(horizontal = 22.dp, vertical = 10.dp)
                 ) {
