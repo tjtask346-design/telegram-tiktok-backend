@@ -1,7 +1,7 @@
 import re
 import base64
 import os
-import os
+import asyncio
 import logging
 import tempfile
 import aiofiles
@@ -221,11 +221,12 @@ async def stream(msg_id: int, request: Request):
             log.info(f"/stream/{msg_id} downloaded {os.path.getsize(tmp_raw)} bytes")
 
             import subprocess
-            result = subprocess.run(
+            result = await asyncio.to_thread(
+                subprocess.run,
                 ["ffmpeg", "-y", "-i", tmp_raw,
                  "-c", "copy", "-movflags", "+faststart",
                  cache_path],
-                capture_output=True, timeout=120
+                capture_output=True, timeout=120,
             )
             if result.returncode != 0:
                 log.error(f"ffmpeg err: {result.stderr.decode()[:500]}")
@@ -245,10 +246,15 @@ async def stream(msg_id: int, request: Request):
     range_header = request.headers.get("range")
 
     if not range_header:
-        with open(cache_path, "rb") as fh:
-            data = fh.read()
-        return Response(
-            content=data,
+        async def _full_stream():
+            with open(cache_path, "rb") as fh:
+                while True:
+                    b = fh.read(1024 * 1024)
+                    if not b:
+                        break
+                    yield b
+        return StreamingResponse(
+            _full_stream(),
             media_type=mime,
             headers={
                 "Accept-Ranges": "bytes",
@@ -282,18 +288,25 @@ async def stream(msg_id: int, request: Request):
     length = end - start + 1
     log.info(f"/stream/{msg_id} {start}-{end} ({length}b)")
 
-    with open(cache_path, "rb") as fh:
-        fh.seek(start)
-        data = fh.read(length)
+    async def _range_stream():
+        with open(cache_path, "rb") as fh:
+            fh.seek(start)
+            remaining = length
+            while remaining > 0:
+                b = fh.read(min(1024 * 1024, remaining))
+                if not b:
+                    break
+                remaining -= len(b)
+                yield b
 
-    return Response(
-        content=data,
+    return StreamingResponse(
+        _range_stream(),
         status_code=206,
         media_type=mime,
         headers={
             "Content-Range": f"bytes {start}-{end}/{actual_size}",
             "Accept-Ranges": "bytes",
-            "Content-Length": str(len(data)),
+            "Content-Length": str(length),
             "Cache-Control": "public, max-age=86400",
         },
     )
@@ -576,14 +589,26 @@ async def delete_account(authorization: str = Header(...)):
     except Exception:
         pass
 
-    # 5. Delete user sub-collections
+    # 5. Delete user sub-collections (chats live top-level, not here)
     try:
-        for sub in ("bookmarks", "notifications", "drafts", "sessions", "settings", "chats"):
+        for sub in ("bookmarks", "notifications", "drafts", "sessions", "settings"):
             for d in db.collection("users").document(uid).collection(sub).stream():
                 try: d.reference.delete()
                 except Exception: pass
     except Exception as e:
         log.warning(f"user sub cleanup failed: {e}")
+
+    # 5b. Delete DM chats + their message subcollections
+    try:
+        for chat in db.collection("chats") \
+                .whereArrayContains("participants", uid).stream():
+            for m in chat.reference.collection("messages").stream():
+                try: m.reference.delete()
+                except Exception: pass
+            try: chat.reference.delete()
+            except Exception: pass
+    except Exception as e:
+        log.warning(f"chat cleanup failed: {e}")
 
     # 6. Delete username reservation
     try:
