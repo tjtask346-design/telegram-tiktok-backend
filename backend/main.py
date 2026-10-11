@@ -4,7 +4,9 @@ import os
 import asyncio
 import logging
 import tempfile
+import time
 import aiofiles
+from collections import defaultdict
 from contextlib import asynccontextmanager
 
 from fastapi import (
@@ -30,6 +32,26 @@ if not firebase_admin._apps:
     cred = credentials.Certificate(FIREBASE_JSON_PATH)
     firebase_admin.initialize_app(cred)
 db = firestore.client()
+
+# ── Simple in-memory rate limiter (per-key sliding window) ──
+_rate_buckets: dict = defaultdict(list)
+
+def rate_limit(key: str, max_calls: int, window_sec: int) -> None:
+    """Raise 429 if key exceeds max_calls within window_sec."""
+    now = time.time()
+    bucket = _rate_buckets[key]
+    bucket[:] = [t for t in bucket if now - t < window_sec]
+    if len(bucket) >= max_calls:
+        raise HTTPException(429, "Too many requests — slow down")
+    bucket.append(now)
+
+# ── /stream HEAD info cache (msg_id -> info dict) ──
+_info_cache: dict = {}
+
+def _cache_put(msg_id: int, info: dict) -> None:
+    if len(_info_cache) > 512:
+        _info_cache.clear()
+    _info_cache[msg_id] = info
 
 
 @asynccontextmanager
@@ -69,6 +91,7 @@ async def upload(
     authorization: str = Header(...),
 ):
     uid = await verify_token(authorization)
+    rate_limit(f"upload:{uid}", max_calls=5, window_sec=60)
     log.info("Upload by uid=%s filename=%s" % (uid, file.filename))
 
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
@@ -139,7 +162,7 @@ async def upload(
     video_id = doc.id
 
     # ---- Extract hashtags ----
-    tags = list(set(
+    tags = sorted(set(
         t.lower() for t in re.findall(r"#([A-Za-z0-9_]+)", caption or "")
     ))[:10]
     log.info(f"hashtags={tags}")
@@ -188,7 +211,11 @@ async def upload(
 @app.api_route("/stream/{msg_id}", methods=["GET", "HEAD"])
 async def stream(msg_id: int, request: Request):
     """Cache + remux with faststart for streaming."""
-    info = await get_video_info(msg_id)
+    info = _info_cache.get(msg_id)
+    if not info:
+        info = await get_video_info(msg_id)
+        if info:
+            _cache_put(msg_id, info)
     if not info:
         raise HTTPException(404, "Video not found")
 
@@ -313,10 +340,12 @@ async def stream(msg_id: int, request: Request):
 
 @app.post("/view/{video_id}")
 async def increment_view(video_id: str, authorization: str = Header(...)):
-    await verify_token(authorization)
-    db.collection("videos").document(video_id).update({
-        "views": firestore.Increment(1)
-    })
+    uid = await verify_token(authorization)
+    rate_limit(f"view:{uid}", max_calls=120, window_sec=60)
+    ref = db.collection("videos").document(video_id)
+    if not ref.get().exists:
+        raise HTTPException(404, "Video not found")
+    ref.update({"views": firestore.Increment(1)})
     return {"ok": True}
 
 
@@ -430,6 +459,7 @@ async def notify(
     authorization: str = Header(...),
 ):
     sender_uid = await verify_token(authorization)
+    rate_limit(f"notify:{sender_uid}", max_calls=30, window_sec=60)
     if sender_uid == payload.target_uid:
         return {"ok": True, "skipped": "self"}
 
@@ -562,11 +592,21 @@ async def delete_account(authorization: str = Header(...)):
         log.warning(f"pic cleanup failed: {e}")
 
     # 3. Delete comments this user made on other videos
+    #    + decrement parent video's comments counter (avoids drift)
     try:
         for v in db.collection("videos").stream():
+            removed = 0
             for c in v.reference.collection("comments").whereEqualTo("uid", uid).stream():
-                try: c.reference.delete()
-                except Exception: pass
+                try:
+                    c.reference.delete()
+                    removed += 1
+                except Exception:
+                    pass
+            if removed > 0:
+                try:
+                    v.reference.update({"comments": firestore.Increment(-removed)})
+                except Exception:
+                    pass
     except Exception as e:
         log.warning(f"comment cleanup failed: {e}")
 
@@ -661,6 +701,7 @@ async def notify_dm(
     authorization: str = Header(...),
 ):
     sender_uid = await verify_token(authorization)
+    rate_limit(f"dm:{sender_uid}", max_calls=30, window_sec=60)
     data = await request.json()
     chat_id = (data.get("chatId") or "").strip()
     receiver_uid = (data.get("receiverUid") or "").strip()
