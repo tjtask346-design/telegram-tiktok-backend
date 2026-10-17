@@ -23,34 +23,13 @@ fun SplashScreen(onDone: () -> Unit) {
     }
 
     Box(
-        Modifier.fillMaxSize().background(EarnyBlack)
+        Modifier.fillMaxSize().background(EarnyBlack),
+        contentAlignment = Alignment.Center
     ) {
-        // পুরো স্ক্রিন জুড়ে ছবি (ব্যাকগ্রাউন্ডসহ)
-        androidx.compose.foundation.Image(
-            painter = androidx.compose.ui.res.painterResource(id = com.aim.earny.R.drawable.earny_logo),
-            contentDescription = "Earny Logo",
-            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-            modifier = Modifier.fillMaxSize()
-        )
-        
-        // নিচের দিকে কালো গ্রেডিয়েন্ট, যাতে লেখা সুন্দরভাবে ফুটে ওঠে
-        Box(
-            Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .height(200.dp)
-                .background(
-                    androidx.compose.ui.graphics.Brush.verticalGradient(
-                        listOf(Color.Transparent, EarnyBlack)
-                    )
-                )
-        )
-
-        // নিচে "earny" লেখাটি
-        Column(
-            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 80.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            // এখানে সাইজ 96 থেকে বাড়িয়ে 140 করা হয়েছে (জুম)
+            EarnyOrb(size = 140.dp, glowing = true)
+            Spacer(Modifier.height(32.dp))
             Text(
                 "earny",
                 color = Color.White,
