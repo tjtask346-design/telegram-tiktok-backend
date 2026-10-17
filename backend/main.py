@@ -833,6 +833,119 @@ async def assetlinks():
         },
     }]
 
+# ═══════════════════════════════════════════════════════════
+#  PROFILE SHARE PAGE — /@username
+# ═══════════════════════════════════════════════════════════
+
+PROFILE_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>@{USERNAME} on Earny</title>
+<meta name="description" content="{BIO}">
+<meta property="og:type" content="profile">
+<meta property="og:title" content="@{USERNAME} on Earny">
+<meta property="og:description" content="{BIO}">
+<meta property="og:image" content="{THUMB_URL}">
+<meta property="og:url" content="{CANONICAL}">
+<meta property="og:site_name" content="Earny">
+<meta name="twitter:card" content="summary">
+<meta name="theme-color" content="#000000">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{background:#000;color:#fff;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px}
+.card{width:100%;max-width:420px;background:#121212;border-radius:20px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.6);text-align:center;padding:32px 24px}
+.avatar{width:96px;height:96px;border-radius:50%;object-fit:cover;margin:0 auto 16px;background:#1a1a1a;border:3px solid #FFD700;display:flex;align-items:center;justify-content:center;font-size:36px;font-weight:800;color:#FFD700}
+.username{font-size:22px;font-weight:800;color:#fff;margin-bottom:6px}
+.bio{color:rgba(255,255,255,.7);font-size:14px;line-height:1.4;margin-bottom:24px;word-break:break-word;min-height:20px}
+.stats{display:flex;justify-content:center;gap:24px;margin-bottom:28px}
+.stat-val{font-size:16px;font-weight:800;color:#fff;display:block}
+.stat-lbl{font-size:11px;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.5px}
+.btn{display:block;width:100%;text-align:center;padding:16px;border-radius:100px;font-weight:800;font-size:15px;text-decoration:none;transition:transform .1s;border:none;cursor:pointer;margin-bottom:10px}
+.btn:active{transform:scale(.97)}
+.btn-primary{background:linear-gradient(135deg,#FFD700,#FF8C00);color:#000}
+.btn-secondary{background:#1E1E1E;color:#fff}
+.footer{color:rgba(255,255,255,.35);font-size:11px;margin-top:10px}
+</style>
+</head>
+<body>
+<div class="card">
+  <img src="{THUMB_URL}" class="avatar" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+  <div class="avatar" style="display:none">E</div>
+  
+  <div class="username">@{USERNAME}</div>
+  <div class="bio">{BIO}</div>
+  
+  <div class="stats">
+    <div><span class="stat-val">{FOLLOWERS}</span><span class="stat-lbl">Followers</span></div>
+    <div><span class="stat-val">{FOLLOWING}</span><span class="stat-lbl">Following</span></div>
+    <div><span class="stat-val">{LIKES}</span><span class="stat-lbl">Likes</span></div>
+  </div>
+  
+  <a class="btn btn-primary" id="openBtn" href="javascript:openApp()">Open in Earny</a>
+  <a class="btn btn-secondary" href="https://play.google.com/store/apps/details?id=com.aim.earny">Get Earny — it's free</a>
+  
+  <div class="footer">Earny · earny.new.tg</div>
+</div>
+<script>
+var USERNAME = "{USERNAME}";
+var CANONICAL = "{CANONICAL}";
+var INTENT_URL = "intent://earny.new.tg/@" + USERNAME +
+  "#Intent;scheme=https;package=com.aim.earny;S.browser_fallback_url=" +
+  encodeURIComponent(CANONICAL) + ";end";
+
+function openApp() {
+  var t0 = Date.now();
+  window.location = INTENT_URL;
+  setTimeout(function() {
+    if (Date.now() - t0 < 2000) return;
+    var b = document.getElementById("openBtn");
+    if (b) b.textContent = "📲 Get Earny (free)";
+  }, 1500);
+}
+if (/Android/i.test(navigator.userAgent)) {
+  setTimeout(openApp, 250);
+}
+</script>
+</body>
+</html>
+"""
+
+@app.get("/@{username}")
+async def share_profile(username: str):
+    clean = username.lower().strip()
+    # Query user by usernameLower
+    users_ref = db.collection("users").where("usernameLower", "==", clean).limit(1).get()
+    
+    if not users_ref:
+        raise HTTPException(404, "User not found")
+        
+    user_doc = users_ref[0]
+    u = user_doc.to_dict() or {}
+    
+    handle = u.get("username", clean)
+    bio = (u.get("bio", "") or "").strip()
+    followers = int(u.get("followers", 0) or 0)
+    following = int(u.get("following", 0) or 0)
+    likes = int(u.get("totalLikes", 0) or 0)
+    pic_id = u.get("profilePicMsgId", 0) or 0
+    
+    canonical = f"https://earny.new.tg/@{handle}"
+    thumb_url = f"https://earny.new.tg/profile-pic/{pic_id}" if pic_id > 0 else ""
+    
+    import html as _html
+    html_out = (PROFILE_HTML
+        .replace("{USERNAME}", _html.escape(handle))
+        .replace("{BIO}", _html.escape(bio) if bio else "No bio yet.")
+        .replace("{THUMB_URL}", thumb_url)
+        .replace("{CANONICAL}", canonical)
+        .replace("{FOLLOWERS}", str(followers))
+        .replace("{FOLLOWING}", str(following))
+        .replace("{LIKES}", str(likes)))
+        
+    return Response(content=html_out, media_type="text/html; charset=utf-8")
+
 @app.get("/hashtags/trending")
 async def trending_hashtags(limit: int = 20):
     try:
