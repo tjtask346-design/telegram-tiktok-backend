@@ -138,8 +138,8 @@ fun ProfileScreen(
                         onEdit = onEditProfile,
                         onShare = {
                             val handle = p.username.ifBlank { "" }
-                            val url = if (handle.isBlank()) "https://earny.app"
-                            else "https://earny.app/@$handle"
+                            val url = if (handle.isBlank()) "https://earny.new.tg"
+                            else "https://earny.new.tg/@$handle"
                             val share = Intent(Intent.ACTION_SEND).apply {
                                 type = "text/plain"
                                 val disp = if (handle.isBlank()) "this creator" else "@$handle"
