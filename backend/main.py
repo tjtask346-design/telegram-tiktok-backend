@@ -77,7 +77,9 @@ async def root():
 
 
 @app.get("/health")
+@app.head("/health")
 async def health():
+    # HEAD support added so UptimeRobot (uses HEAD by default) doesn't 405
     return {"status": "healthy"}
 
 
