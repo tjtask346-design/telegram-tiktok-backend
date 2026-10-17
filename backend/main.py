@@ -680,6 +680,159 @@ async def delete_account(authorization: str = Header(...)):
     log.info(f"delete-account done for {uid}")
     return {"ok": True}
 
+# ═══════════════════════════════════════════════════════════
+#  SHARE PAGE — TikTok-style /v/{videoId}
+# ═══════════════════════════════════════════════════════════
+
+SHARE_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>{TITLE}</title>
+<meta name="description" content="{DESCRIPTION}">
+<meta property="og:type" content="video.other">
+<meta property="og:title" content="{TITLE}">
+<meta property="og:description" content="{DESCRIPTION}">
+<meta property="og:image" content="{THUMB_URL}">
+<meta property="og:image:width" content="720">
+<meta property="og:image:height" content="1280">
+<meta property="og:url" content="{CANONICAL}">
+<meta property="og:site_name" content="Earny">
+<meta name="twitter:card" content="player">
+<meta name="twitter:title" content="{TITLE}">
+<meta name="twitter:description" content="{DESCRIPTION}">
+<meta name="twitter:image" content="{THUMB_URL}">
+<meta name="theme-color" content="#000000">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{background:#000;color:#fff;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px}
+.card{width:100%;max-width:420px;background:#121212;border-radius:20px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.6)}
+.hero{position:relative;aspect-ratio:9/16;background:#1a1a1a;overflow:hidden}
+.hero img{width:100%;height:100%;object-fit:cover;display:block}
+.play{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.15);cursor:pointer;transition:opacity .2s}
+.play svg{width:80px;height:80px;opacity:.85;filter:drop-shadow(0 4px 12px rgba(0,0,0,.6))}
+.badge{position:absolute;top:14px;left:14px;background:linear-gradient(135deg,#FFD700,#FF8C00);color:#000;padding:6px 12px;border-radius:100px;font-weight:800;font-size:11px;letter-spacing:.5px}
+.meta{padding:16px 18px 8px}
+.username{font-weight:800;color:#FFD700;font-size:15px;margin-bottom:6px}
+.caption{color:#fff;font-size:14px;line-height:1.4;opacity:.95;word-break:break-word}
+.stats{display:flex;gap:18px;margin-top:12px;color:rgba(255,255,255,.6);font-size:13px;font-weight:600}
+.stats span{display:flex;align-items:center;gap:5px}
+.actions{padding:14px 18px 18px;display:flex;flex-direction:column;gap:10px}
+.btn{display:block;text-align:center;padding:14px;border-radius:100px;font-weight:800;font-size:15px;text-decoration:none;transition:transform .1s;border:none;cursor:pointer}
+.btn:active{transform:scale(.97)}
+.btn-primary{background:linear-gradient(135deg,#FFD700,#FF8C00);color:#000}
+.btn-secondary{background:#1E1E1E;color:#fff}
+.footer{text-align:center;padding:0 18px 20px;color:rgba(255,255,255,.35);font-size:11px}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="hero">
+    <img src="{THUMB_URL}" alt="">
+    <div class="play" id="playBtn" onclick="openApp()">
+      <svg viewBox="0 0 24 24" fill="white"><circle cx="12" cy="12" r="11" fill="rgba(0,0,0,.5)"/><path d="M10 8l6 4-6 4V8z" fill="#FFD700"/></svg>
+    </div>
+    <div class="badge">EARNY</div>
+  </div>
+  <div class="meta">
+    <div class="username">@{USERNAME}</div>
+    <div class="caption">{CAPTION}</div>
+    <div class="stats">
+      <span>❤️ {LIKES}</span>
+      <span>💬 {COMMENTS}</span>
+      <span>👁 {VIEWS}</span>
+    </div>
+  </div>
+  <div class="actions">
+    <a class="btn btn-primary" id="openBtn" href="javascript:openApp()">▶ Watch in Earny</a>
+    <a class="btn btn-secondary" href="https://play.google.com/store/apps/details?id=com.aim.earny">Get Earny — it's free</a>
+  </div>
+  <div class="footer">Made with Earny · earny.new.tg</div>
+</div>
+<script>
+var VIDEO_ID = "{VIDEO_ID}";
+var CANONICAL = "{CANONICAL}";
+var INTENT_URL = "intent://earny.new.tg/v/" + VIDEO_ID +
+  "#Intent;scheme=https;package=com.aim.earny;S.browser_fallback_url=" +
+  encodeURIComponent(CANONICAL) + ";end";
+
+function openApp() {
+  var t0 = Date.now();
+  window.location = INTENT_URL;
+  setTimeout(function() {
+    if (Date.now() - t0 < 2000) return;
+    var b = document.getElementById("openBtn");
+    if (b) b.textContent = "📲 Get Earny (free)";
+  }, 1500);
+}
+if (/Android/i.test(navigator.userAgent)) {
+  setTimeout(openApp, 250);
+}
+</script>
+</body>
+</html>
+"""
+
+@app.get("/v/{video_id}")
+async def share_page(video_id: str, request: Request):
+    doc = db.collection("videos").document(video_id).get()
+    if not doc.exists:
+        raise HTTPException(404, "Video not found")
+    v = doc.to_dict() or {}
+    handle = v.get("uploaderHandle", "") or v.get("uploaderName", "user")
+    caption = (v.get("caption", "") or "").strip()
+    likes = int(v.get("likes", 0) or 0)
+    comments = int(v.get("comments", 0) or 0)
+    views = int(v.get("views", 0) or 0)
+    
+    title = caption[:80] if caption else f"@{handle} on Earny"
+    desc = caption if caption else f"Watch @{handle}'s video on Earny"
+    
+    canonical = f"https://earny.new.tg/v/{video_id}"
+    thumb_url = f"https://earny.new.tg/thumb/{video_id}"
+    
+    import html as _html
+    html_out = (SHARE_HTML
+        .replace("{VIDEO_ID}", video_id)
+        .replace("{CANONICAL}", canonical)
+        .replace("{THUMB_URL}", thumb_url)
+        .replace("{TITLE}", _html.escape(title))
+        .replace("{DESCRIPTION}", _html.escape(desc))
+        .replace("{USERNAME}", _html.escape(handle))
+        .replace("{CAPTION}", _html.escape(caption))
+        .replace("{LIKES}", str(likes))
+        .replace("{COMMENTS}", str(comments))
+        .replace("{VIEWS}", str(views)))
+    return Response(content=html_out, media_type="text/html; charset=utf-8")
+
+
+@app.get("/thumb/{video_id}")
+async def share_thumb(video_id: str):
+    doc = db.collection("videos").document(video_id).get()
+    if not doc.exists:
+        raise HTTPException(404, "Not found")
+    thumb_b64 = (doc.to_dict() or {}).get("thumbB64") or ""
+    if not thumb_b64:
+        raise HTTPException(404, "No thumb")
+    try:
+        raw = base64.b64decode(thumb_b64)
+    except Exception:
+        raise HTTPException(500, "Bad thumb")
+    return Response(content=raw, media_type="image/jpeg", headers={"Cache-Control": "public, max-age=604800"})
+
+
+@app.get("/.well-known/assetlinks.json")
+async def assetlinks():
+    return [{
+        "relation": ["delegate_permission/common.handle_all_urls"],
+        "target": {
+            "namespace": "android_app",
+            "package_name": "com.aim.earny",
+            "sha256_cert_fingerprints": ["REPLACE_WITH_DEBUG_SHA256"],
+        },
+    }]
+
 @app.get("/hashtags/trending")
 async def trending_hashtags(limit: int = 20):
     try:
