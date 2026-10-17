@@ -829,7 +829,7 @@ async def assetlinks():
         "target": {
             "namespace": "android_app",
             "package_name": "com.aim.earny",
-            "sha256_cert_fingerprints": ["REPLACE_WITH_DEBUG_SHA256"],
+            "sha256_cert_fingerprints": ["4C:76:C2:34:E7:0D:35:C1:63:41:B2:3F:28:72:E4:3C:00:F1:97:91:DC:7E:46:1D:DA:7D:46:72:73:66:16:ED"],
         },
     }]
 
