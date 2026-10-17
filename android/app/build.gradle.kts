@@ -6,12 +6,15 @@ plugins {
 
 android {
     signingConfigs {
-        create("debug") {
+        getByName("debug") {
             storeFile = file("debug.keystore")
             storePassword = "android"
             keyAlias = "androiddebugkey"
             keyPassword = "android"
         }
+    }
+
+    
     }
 
 
@@ -32,6 +35,8 @@ android {
         getByName("debug") {
             signingConfig = signingConfigs.getByName("debug")
         }
+
+        
 
         release {
             isMinifyEnabled = false
