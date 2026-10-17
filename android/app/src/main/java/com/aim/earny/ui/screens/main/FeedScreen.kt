@@ -703,8 +703,21 @@ private fun VideoPage(
                 onClick = onToggleBookmark
             )
             FeedActionItem(Icons.Filled.Share, "Share") {
-                val url = BuildConfig.API_BASE.trimEnd('/') + "/stream/" + video.telegramMsgId
-                val text = if (video.caption.isNotBlank()) "${video.caption}\n\n$url" else url
+                // TikTok-style share: pretty link that opens a preview page
+                val url = "https://earny.new.tg/v/" + video.id
+                val text = if (video.caption.isNotBlank()) "${video.caption}
+
+$url" else url
+                val intent = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_TEXT, text)
+                }
+                try {
+                    ctx.startActivity(Intent.createChooser(intent, "Share video"))
+                } catch (_: Exception) {
+                    Toast.makeText(ctx, "No share app", Toast.LENGTH_SHORT).show()
+                }
+            }\n\n$url" else url
                 val intent = Intent(Intent.ACTION_SEND).apply {
                     type = "text/plain"
                     putExtra(Intent.EXTRA_TEXT, text)
