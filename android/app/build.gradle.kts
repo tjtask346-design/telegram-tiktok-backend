@@ -14,6 +14,7 @@ android {
         }
     }
 
+
     namespace = "com.aim.earny"
     compileSdk = 34
 
@@ -31,6 +32,7 @@ android {
         getByName("debug") {
             signingConfig = signingConfigs.getByName("debug")
         }
+
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
