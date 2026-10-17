@@ -705,9 +705,7 @@ private fun VideoPage(
             FeedActionItem(Icons.Filled.Share, "Share") {
                 // TikTok-style share: pretty link that opens a preview page
                 val url = "https://earny.new.tg/v/" + video.id
-                val text = if (video.caption.isNotBlank()) "${video.caption}
-
-$url" else url
+                val text = if (video.caption.isNotBlank()) video.caption + "\n\n" + url else url
                 val intent = Intent(Intent.ACTION_SEND).apply {
                     type = "text/plain"
                     putExtra(Intent.EXTRA_TEXT, text)
