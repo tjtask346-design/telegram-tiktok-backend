@@ -5,6 +5,9 @@ plugins {
 }
 
 android {
+    namespace = "com.aim.earny"
+    compileSdk = 34
+
     signingConfigs {
         getByName("debug") {
             storeFile = file("debug.keystore")
@@ -13,13 +16,6 @@ android {
             keyPassword = "android"
         }
     }
-
-    
-    }
-
-
-    namespace = "com.aim.earny"
-    compileSdk = 34
 
     defaultConfig {
         applicationId = "com.aim.earny"
@@ -35,9 +31,6 @@ android {
         getByName("debug") {
             signingConfig = signingConfigs.getByName("debug")
         }
-
-        
-
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
@@ -47,10 +40,21 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions { jvmTarget = "17" }
-    buildFeatures { compose = true; buildConfig = true }
-    composeOptions { kotlinCompilerExtensionVersion = "1.5.10" }
-    packaging { resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" } }
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
+    composeOptions {
+        kotlinCompilerExtensionVersion = "1.5.10"
+    }
+    packaging {
+        resources {
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
+    }
 }
 
 dependencies {
